@@ -1,18 +1,25 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getWorkspaceByOwnerId, getEndUsersByWorkspace } from "@/db/queries";
 import { redirect } from "next/navigation";
+import { createClient } from "@/utils/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { getEndUsersByWorkspace } from "@/db/queries";
 import { UserTable } from "@/components/UserTable";
 
 export default async function UsersPage() {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/auth/login");
+  if (!user) redirect("/login");
 
-  const workspace = await getWorkspaceByOwnerId(user.id);
-  if (!workspace) redirect("/dashboard");
+  const admin = createSupabaseAdminClient();
+  const { data: workspace } = await admin
+    .from("workspaces")
+    .select("id")
+    .eq("owner_id", user.id)
+    .single();
+
+  if (!workspace) redirect("/onboarding");
 
   const endUsers = await getEndUsersByWorkspace(workspace.id, 200);
 
@@ -21,10 +28,9 @@ export default async function UsersPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Users</h1>
         <p className="text-gray-500 text-sm mt-1">
-          {endUsers.length} users tracked
+          {endUsers.length} user{endUsers.length !== 1 ? "s" : ""} tracked
         </p>
       </div>
-
       <UserTable users={endUsers} />
     </div>
   );

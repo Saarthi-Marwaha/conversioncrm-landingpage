@@ -7,7 +7,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/utils/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { createCheckoutUrl } from "@/lib/lemonsqueezy";
 import { getWorkspaceByOwnerId } from "@/db/queries";
 
@@ -17,7 +18,7 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -43,7 +44,6 @@ export async function POST(request: NextRequest) {
   }
 
   // Fetch end user details to pre-fill the checkout
-  const { createSupabaseAdminClient } = await import("@/lib/supabase/server");
   const admin = createSupabaseAdminClient();
   const { data: endUser } = await admin
     .from("end_users")

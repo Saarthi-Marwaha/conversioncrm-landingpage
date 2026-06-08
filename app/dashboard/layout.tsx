@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getWorkspaceByOwnerId } from "@/db/queries";
+import { createClient } from "@/utils/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
 
 export default async function DashboardLayout({
@@ -8,14 +8,22 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/auth/login");
+  if (!user) redirect("/login");
 
-  const workspace = await getWorkspaceByOwnerId(user.id);
+  const admin = createSupabaseAdminClient();
+  const { data: workspace } = await admin
+    .from("workspaces")
+    .select("*")
+    .eq("owner_id", user.id)
+    .single();
+
+  // No workspace yet — send to onboarding
+  if (!workspace) redirect("/onboarding");
 
   return (
     <div className="flex h-screen bg-gray-50">

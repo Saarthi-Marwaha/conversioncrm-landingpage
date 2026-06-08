@@ -40,8 +40,7 @@ export function DailySummaryEmail({ data }: DailySummaryEmailProps) {
     <Html>
       <Head />
       <Preview>
-        Daily summary — {data.emails_sent_today} emails sent,{" "}
-        {data.conversion_rate_7d}% conversion rate this week
+        {`Daily summary — ${data.emails_sent_today} emails sent, ${data.conversion_rate_7d}% conversion rate this week`}
       </Preview>
       <Body style={main}>
         <Container style={container}>

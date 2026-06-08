@@ -2,17 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { useTransition } from "react";
+import { signOut } from "@/app/auth/actions";
 import type { Workspace } from "@/types";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Users,
-  Settings,
-  LogOut,
-  Zap,
-} from "lucide-react";
+import { LayoutDashboard, Users, Settings, LogOut, Zap } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -27,12 +21,12 @@ interface Props {
 
 export function DashboardSidebar({ workspace, userEmail }: Props) {
   const pathname = usePathname();
-  const router = useRouter();
+  const [pending, startTransition] = useTransition();
 
-  async function handleSignOut() {
-    const supabase = createSupabaseBrowserClient();
-    await supabase.auth.signOut();
-    router.push("/auth/login");
+  function handleSignOut() {
+    startTransition(async () => {
+      await signOut();
+    });
   }
 
   return (
@@ -75,15 +69,16 @@ export function DashboardSidebar({ workspace, userEmail }: Props) {
         })}
       </nav>
 
-      {/* User */}
+      {/* User + sign out */}
       <div className="px-4 py-4 border-t border-gray-100">
         <p className="text-xs text-gray-400 truncate mb-2">{userEmail}</p>
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+          disabled={pending}
+          className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50 transition-colors"
         >
           <LogOut className="h-3.5 w-3.5" />
-          Sign out
+          {pending ? "Signing out…" : "Sign out"}
         </button>
       </div>
     </aside>
