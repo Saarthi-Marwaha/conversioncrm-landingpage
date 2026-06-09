@@ -11,6 +11,10 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import {
+  isSignupEventType,
+  maybeSendWelcomeOnSignup,
+} from "@/lib/emails/send-welcome";
 
 // Seeded by db/migrations/003_widget_testing.sql.
 const TEST_WORKSPACE_ID = "00000000-0000-0000-0000-000000000001";
@@ -69,7 +73,7 @@ export async function POST(request: NextRequest) {
   // Look up the workspace this api_key belongs to
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("id")
+    .select("id, reply_to_email")
     .eq("api_key", apiKey)
     .maybeSingle();
 
@@ -115,6 +119,13 @@ export async function POST(request: NextRequest) {
       { error: "Failed to store event" },
       { status: 500, headers: CORS_HEADERS }
     );
+  }
+
+  const userId = typeof body.user_id === "string" ? body.user_id : null;
+  if (userId && isSignupEventType(eventType) && email) {
+    void maybeSendWelcomeOnSignup(workspaceId, userId, email).catch((err) => {
+      console.error("[/api/events] welcome email:", err);
+    });
   }
 
   return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
