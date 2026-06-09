@@ -1,35 +1,35 @@
 /**
- * GET /api/widget?api_key=ccrm_xxx
+ * GET /api/widget?api_key=ccrm_xxx   (served to customers as /widget.js?api_key=ccrm_xxx)
  *
- * Serves the compiled tracking widget JS file.
- * The customer embeds: <script src="https://app.conversioncrm.io/api/widget?api_key=ccrm_xxx"></script>
- *
- * This route returns the widget script with the API key baked in,
- * so the customer doesn't need to set it twice.
+ * Returns a self-contained vanilla-JS tracking snippet with the api_key baked in.
+ * The customer embeds:
+ *   <script src="https://app.conversioncrm.io/widget.js?api_key=ccrm_xxx"></script>
  */
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   const apiKey = request.nextUrl.searchParams.get("api_key") ?? "";
 
-  if (!apiKey.startsWith("ccrm_")) {
-    return new NextResponse("// ConversionCRM: invalid api_key", {
+  if (!apiKey) {
+    return new NextResponse("// ConversionCRM: missing api_key", {
       status: 400,
-      headers: { "Content-Type": "application/javascript" },
+      headers: { "Content-Type": "application/javascript; charset=utf-8" },
     });
   }
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? "https://app.conversioncrm.io";
-
-  // Inline the widget script with the resolved API key and endpoint
-  const script = buildWidgetScript({ apiKey, endpoint: `${appUrl}/api/events` });
+  // Derive the endpoint from where this script is being served, so events
+  // always POST back to the same origin (works on any domain automatically).
+  const origin =
+    request.nextUrl.origin ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000";
+  const script = buildWidgetScript({ apiKey, endpoint: `${origin}/api/events` });
 
   return new NextResponse(script, {
     status: 200,
     headers: {
       "Content-Type": "application/javascript; charset=utf-8",
-      "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
+      "Cache-Control": "no-store, must-revalidate",
       "Access-Control-Allow-Origin": "*",
     },
   });
@@ -42,76 +42,199 @@ function buildWidgetScript({
   apiKey: string;
   endpoint: string;
 }): string {
-  // The widget is a self-contained IIFE.
-  // It exposes window.ccrm.track(event, properties) and window.ccrm.identify(userId, traits).
   return `
-(function() {
-  if (window.__ccrm_loaded) return;
-  window.__ccrm_loaded = true;
+(function () {
+  if (window.ConversionCRM && window.ConversionCRM.__loaded) return;
 
   var API_KEY = ${JSON.stringify(apiKey)};
   var ENDPOINT = ${JSON.stringify(endpoint)};
-  var userId = null;
-  var userEmail = null;
-  var userName = null;
 
-  function send(event, properties) {
-    if (!userId) return;
+  // ── Storage / identity ───────────────────────────────
+  function readCookie(name) {
+    var match = document.cookie.match(new RegExp('(^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[2]) : null;
+  }
+  function lsGet(key) {
+    try { return window.localStorage.getItem(key); } catch (e) { return null; }
+  }
+  function lsSet(key, val) {
+    try { window.localStorage.setItem(key, String(val)); } catch (e) {}
+  }
+  function getUserId() {
+    var id = lsGet('ccrm_user_id') || lsGet('user_id') ||
+             readCookie('ccrm_user_id') || readCookie('user_id');
+    if (id) return id;
+    var anon = lsGet('ccrm_anon_id');
+    if (!anon) {
+      anon = 'anon_' + Math.random().toString(36).slice(2, 10) +
+             Date.now().toString(36).slice(-4);
+      lsSet('ccrm_anon_id', anon);
+    }
+    return anon;
+  }
+  function getEmail() {
+    return lsGet('ccrm_email') || null;
+  }
+
+  // ── Page helpers ─────────────────────────────────────
+  function getPagePath() {
+    return window.location.pathname + window.location.search +
+      (window.location.hash || '');
+  }
+  function getPageMeta() {
+    return {
+      title: (document.title || '').slice(0, 200),
+      url: window.location.href,
+      path: getPagePath()
+    };
+  }
+
+  // ── Event sender ─────────────────────────────────────
+  function send(eventType, properties, pageOverride) {
     var payload = {
       api_key: API_KEY,
-      user_id: userId,
-      email: userEmail,
-      name: userName,
-      event: event,
+      event_type: eventType,
+      page: pageOverride || getPagePath(),
+      user_id: getUserId(),
+      email: getEmail(),
       properties: properties || {},
       timestamp: new Date().toISOString()
     };
+    var json = JSON.stringify(payload);
+    var sent = false;
     if (navigator.sendBeacon) {
-      var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-      navigator.sendBeacon(ENDPOINT, blob);
-    } else {
+      try {
+        sent = navigator.sendBeacon(
+          ENDPOINT,
+          new Blob([json], { type: 'text/plain;charset=UTF-8' })
+        );
+      } catch (e) { sent = false; }
+    }
+    if (!sent) {
       fetch(ENDPOINT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        keepalive: true
-      }).catch(function() {});
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: json,
+        keepalive: true,
+        mode: 'cors'
+      }).catch(function () {});
     }
   }
 
-  window.ccrm = {
-    /**
-     * Identify the current user.
-     * Call this after login with the user's ID and optional traits.
-     */
-    identify: function(id, traits) {
-      userId = String(id);
-      if (traits) {
-        userEmail = traits.email || null;
-        userName = traits.name || null;
-      }
-      send('login', traits || {});
-    },
+  // ── Time-on-page tracking ────────────────────────────
+  var pageEnterAt = Date.now();
+  var currentPage = getPagePath();
+  var timeSentForPage = false;
 
-    /**
-     * Track a custom event.
-     */
-    track: function(event, properties) {
-      send(event, properties);
-    },
+  function sendTimeOnPage() {
+    if (timeSentForPage) return;
+    var duration = Math.round((Date.now() - pageEnterAt) / 1000);
+    if (duration < 1) return;
+    timeSentForPage = true;
+    send('page_time', {
+      duration_seconds: duration,
+      page_title: (document.title || '').slice(0, 200)
+    }, currentPage);
+  }
 
-    /**
-     * Track a page view. Call on route changes in SPAs.
-     */
-    page: function(name, properties) {
-      send('page_view', Object.assign({ page: name || window.location.pathname }, properties || {}));
+  function onPageEnter() {
+    timeSentForPage = false;
+    currentPage = getPagePath();
+    pageEnterAt = Date.now();
+    send('page_view', getPageMeta());
+  }
+
+  function onPageLeave() {
+    sendTimeOnPage();
+  }
+
+  function onRouteChange() {
+    var next = getPagePath();
+    if (next === currentPage) return;
+    onPageLeave();
+    onPageEnter();
+  }
+
+  // ── SPA navigation (Next.js, React Router, etc.) ─────
+  function hookHistory() {
+    var origPush = history.pushState;
+    var origReplace = history.replaceState;
+    history.pushState = function () {
+      origPush.apply(history, arguments);
+      onRouteChange();
+    };
+    history.replaceState = function () {
+      origReplace.apply(history, arguments);
+      onRouteChange();
+    };
+    window.addEventListener('popstate', onRouteChange);
+  }
+
+  // ── Auto click tracking ────────────────────────────
+  function clickLabel(el) {
+    var text = (el.innerText || el.value || el.getAttribute('aria-label') ||
+                el.getAttribute('title') || el.getAttribute('placeholder') || '').trim();
+    if (text) return text.slice(0, 120);
+    if (el.id) return '#' + el.id;
+    if (el.className && typeof el.className === 'string') {
+      var cls = el.className.trim().split(/\\s+/)[0];
+      if (cls) return el.tagName.toLowerCase() + '.' + cls;
     }
+    return el.tagName.toLowerCase();
+  }
+
+  function trackClick(e) {
+    var target = e.target;
+    if (!target || !target.closest) return;
+    var el = target.closest(
+      'a, button, input[type="submit"], input[type="button"], ' +
+      '[role="button"], [role="link"], [data-ccrm-track], label, select, textarea'
+    );
+    if (!el) el = target;
+    var tag = (el.tagName || '').toLowerCase();
+    if (!tag || tag === 'html' || tag === 'body') return;
+
+    send('click', {
+      tag: tag,
+      text: clickLabel(el),
+      id: el.id || undefined,
+      href: el.href || undefined,
+      name: el.name || undefined,
+      type: el.type || undefined,
+      page_title: (document.title || '').slice(0, 200)
+    });
+  }
+
+  // ── Public API ───────────────────────────────────────
+  window.ConversionCRM = {
+    __loaded: true,
+    track: function (eventType, properties) {
+      if (!eventType) return;
+      send(eventType, properties);
+    },
+    identify: function (userId, traits) {
+      if (!userId) return;
+      lsSet('ccrm_user_id', userId);
+      if (traits && traits.email) lsSet('ccrm_email', traits.email);
+      send('identify', {});
+    },
+    page: function () { onPageEnter(); }
   };
 
-  // Auto-track page views (works for MPA; SPA should call ccrm.page() manually)
-  if (typeof window !== 'undefined') {
-    window.ccrm.page();
-  }
+  // ── Lifecycle hooks ────────────────────────────────
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') sendTimeOnPage();
+    else {
+      timeSentForPage = false;
+      pageEnterAt = Date.now();
+    }
+  });
+  window.addEventListener('pagehide', sendTimeOnPage);
+  window.addEventListener('beforeunload', sendTimeOnPage);
+  document.addEventListener('click', trackClick, true);
+
+  hookHistory();
+  onPageEnter();
 })();
 `.trim();
 }

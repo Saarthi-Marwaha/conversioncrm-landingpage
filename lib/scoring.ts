@@ -1,80 +1,125 @@
-import type { Event, EndUser } from "@/types";
+import type { EndUser } from "@/types";
 
-// ─────────────────────────────────────────────
-// Engagement scoring weights (0–100 scale)
-// ─────────────────────────────────────────────
-const WEIGHTS = {
-  login: 5,
-  feature_click: 8,
-  key_feature_used: 20,
-  pricing_page_visit: 15,
-  page_view: 2,
-  file_uploaded: 10,
-  task_completed: 10,
-  upgrade_clicked: 25,
-  custom: 3,
-} as const;
+/** Event fields needed for weekly engagement scoring. */
+export type ScoringEvent = {
+  event_type: string;
+  page: string | null;
+  properties: Record<string, unknown> | null;
+  occurred_at: string;
+};
 
-// Recency decay: events older than N days contribute less
-const RECENCY_DAYS = 14;
-const RECENCY_HALF_LIFE_DAYS = 7;
+export type WeeklyScoreBreakdown = {
+  seen_this_week: number;
+  key_feature_used: number;
+  time_spent: number;
+  pricing_page: number;
+  total_seconds: number;
+  total: number;
+};
 
-interface ScoreBreakdown {
-  raw_points: number;
-  recency_weight: number;
-  final_score: number;
-  by_event_type: Record<string, number>;
+const SEEN_EVENT_TYPES = new Set([
+  "page_view",
+  "signup",
+  "sign_up",
+  "register",
+  "login",
+  "sign_in",
+]);
+
+const TIME_EVENT_TYPES = new Set(["time_spent", "page_time"]);
+
+const FULL_TIME_SECONDS = 600;
+
+function matchesKeyFeature(
+  properties: Record<string, unknown> | null,
+  keyFeature: string | null
+): boolean {
+  if (!keyFeature) return false;
+  const feature = properties?.feature;
+  if (typeof feature !== "string" || !feature) return false;
+  return feature.toLowerCase() === keyFeature.toLowerCase();
+}
+
+function durationSeconds(properties: Record<string, unknown> | null): number {
+  const raw = properties?.duration_seconds;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
 }
 
 /**
- * Computes a 0–100 engagement score for a user based on their recent events.
+ * Computes a 0–100 weekly engagement score from the last 7 days of events.
+ *
+ * Signals (max 100):
+ *   • Seen this week (page_view / signup / login)     → 30 pts
+ *   • Key feature used (feature_used + matching feature) → 30 pts
+ *   • Time spent (time_spent / page_time events)      → 20 pts (600s = full)
+ *   • Pricing page visited (page_view + "pricing")    → 20 pts
  */
-export function computeEngagementScore(
-  events: Pick<Event, "event_type" | "event_name" | "occurred_at">[]
-): { score: number; breakdown: ScoreBreakdown } {
-  const now = Date.now();
-  const cutoffMs = RECENCY_DAYS * 24 * 60 * 60 * 1000;
-  const halfLifeMs = RECENCY_HALF_LIFE_DAYS * 24 * 60 * 60 * 1000;
+export function computeWeeklyEngagementScore(
+  events: ScoringEvent[],
+  keyFeatureName: string | null
+): { score: number; breakdown: WeeklyScoreBreakdown } {
+  let seenThisWeek = false;
+  let keyFeatureUsed = false;
+  let totalSeconds = 0;
+  let pricingVisited = false;
 
-  let totalWeightedPoints = 0;
-  const byEventType: Record<string, number> = {};
+  for (const ev of events) {
+    const type = ev.event_type.toLowerCase();
 
-  for (const event of events) {
-    const age = now - new Date(event.occurred_at).getTime();
-    if (age > cutoffMs) continue;
+    if (SEEN_EVENT_TYPES.has(type)) {
+      seenThisWeek = true;
+    }
 
-    const basePoints = WEIGHTS[event.event_type as keyof typeof WEIGHTS] ?? WEIGHTS.custom;
-    const recencyFactor = Math.exp((-Math.LN2 * age) / halfLifeMs);
-    const weighted = basePoints * recencyFactor;
+    if (type === "feature_used" && matchesKeyFeature(ev.properties, keyFeatureName)) {
+      keyFeatureUsed = true;
+    }
 
-    totalWeightedPoints += weighted;
-    byEventType[event.event_type] =
-      (byEventType[event.event_type] ?? 0) + weighted;
+    if (TIME_EVENT_TYPES.has(type)) {
+      totalSeconds += durationSeconds(ev.properties);
+    }
+
+    if (type === "page_view" && ev.page && /pricing/i.test(ev.page)) {
+      pricingVisited = true;
+    }
   }
 
-  // Cap at 100
-  const score = Math.min(100, Math.round(totalWeightedPoints));
+  const seenPoints = seenThisWeek ? 30 : 0;
+  const keyFeaturePoints = keyFeatureUsed ? 30 : 0;
+  const timePoints = Math.min(20, (totalSeconds / FULL_TIME_SECONDS) * 20);
+  const pricingPoints = pricingVisited ? 20 : 0;
+
+  const rawTotal = seenPoints + keyFeaturePoints + timePoints + pricingPoints;
+  const score = Math.min(100, Math.round(rawTotal));
 
   return {
     score,
     breakdown: {
-      raw_points: totalWeightedPoints,
-      recency_weight: 1,
-      final_score: score,
-      by_event_type: Object.fromEntries(
-        Object.entries(byEventType).map(([k, v]) => [k, Math.round(v * 10) / 10])
-      ),
+      seen_this_week: seenPoints,
+      key_feature_used: keyFeaturePoints,
+      time_spent: Math.round(timePoints * 10) / 10,
+      pricing_page: pricingPoints,
+      total_seconds: totalSeconds,
+      total: score,
     },
   };
 }
 
 /**
  * Determines the lifecycle stage based on the user's score and activity.
+ * (Used by future email / lifecycle features.)
  */
 export function determineStage(
-  user: Pick<EndUser, "stage" | "engagement_score" | "trial_ends_at" | "converted_at" | "last_seen_at">,
+  user: Pick<
+    EndUser,
+    "stage" | "engagement_score" | "trial_ends_at" | "converted_at" | "last_seen_at"
+  >,
   score: number,
-  events: Pick<Event, "event_type" | "occurred_at">[]
+  events: Pick<ScoringEvent, "event_type" | "occurred_at">[]
 ): EndUser["stage"] {
   if (user.converted_at) return "paid";
 
@@ -94,13 +139,13 @@ export function determineStage(
 
   const recentLogins = events.filter(
     (e) =>
-      e.event_type === "login" &&
+      /login|sign[_-]?in/i.test(e.event_type) &&
       new Date(e.occurred_at).getTime() > now.getTime() - 7 * 24 * 60 * 60 * 1000
   ).length;
 
   if (recentLogins >= 2) return "active";
 
-  const hasKeyFeature = events.some((e) => e.event_type === "key_feature_used");
+  const hasKeyFeature = events.some((e) => e.event_type === "feature_used");
   if (!hasKeyFeature) return "onboarding";
 
   return "active";

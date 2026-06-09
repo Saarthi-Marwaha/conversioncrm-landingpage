@@ -1,4 +1,4 @@
-import { resend, EMAIL_FROM } from "@/lib/resend";
+import { getResend, EMAIL_FROM } from "@/lib/resend";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import type { EmailTrigger, EndUser, Workspace } from "@/types";
 
@@ -20,7 +20,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
     options;
 
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: EMAIL_FROM,
       to,
       subject,

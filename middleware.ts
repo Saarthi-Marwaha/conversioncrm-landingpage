@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/utils/supabase/middleware";
+import { DEV_BYPASS_AUTH } from "@/lib/flags";
 
 export async function middleware(request: NextRequest) {
   const { supabaseResponse, user } = await updateSession(request);
@@ -13,7 +14,8 @@ export async function middleware(request: NextRequest) {
   // Auth pages — redirect logged-in users away
   const isAuthPage = pathname === "/login" || pathname === "/signup";
 
-  if (!user && isProtected) {
+  // DEV: skip the login gate so the dashboard is reachable without auth
+  if (!user && isProtected && !DEV_BYPASS_AUTH) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);

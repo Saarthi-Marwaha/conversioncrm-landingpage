@@ -46,8 +46,10 @@ export type SubscriptionStatus =
 export interface Workspace {
   id: string;
   name: string;
-  owner_id: string;
+  owner_id: string | null;
   api_key: string;
+  product_name: string | null;
+  website_url: string | null;
   key_feature_name: string | null;
   key_feature_event: string | null;
   trial_length_days: number;
@@ -86,10 +88,18 @@ export interface Event {
 export interface EngagementScore {
   id: string;
   workspace_id: string;
-  end_user_id: string;
+  end_user_id: string | null;
+  user_id: string | null;
   score: number;
   score_breakdown: Record<string, number>;
   computed_at: string;
+}
+
+export interface UserStage {
+  workspace_id: string;
+  user_id: string;
+  stage: LifecycleStage;
+  updated_at: string;
 }
 
 export interface EmailLog {

@@ -1,42 +1,25 @@
 /**
  * POST /api/events
  *
- * Ingests behavioral events from the customer's JS widget.
- * Authenticated via api_key in the request body.
- * No auth session required — this is a public endpoint.
+ * Public event-ingestion endpoint hit by the embeddable widget.
+ * Authenticated by `api_key` in the request body (no login session needed).
+ *
+ * Body: { api_key, event_type, page?, user_id?, properties?, timestamp? }
+ *
+ *  200 — event stored
+ *  400 — api_key missing / invalid JSON
  */
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { getWorkspaceByApiKey } from "@/db/queries";
-import { upsertEndUser, insertEvent } from "@/db/queries";
-import type { Event } from "@/types";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
-const KNOWN_EVENT_TYPES: Record<string, Event["event_type"]> = {
-  login: "login",
-  feature_click: "feature_click",
-  page_view: "page_view",
-  pricing_page_visit: "pricing_page_visit",
-  key_feature_used: "key_feature_used",
-  file_uploaded: "file_uploaded",
-  task_completed: "task_completed",
-  upgrade_clicked: "upgrade_clicked",
-};
+// Seeded by db/migrations/003_widget_testing.sql.
+const TEST_WORKSPACE_ID = "00000000-0000-0000-0000-000000000001";
 
-const eventSchema = z.object({
-  api_key: z.string().min(1),
-  user_id: z.string().min(1),
-  email: z.string().email().optional(),
-  name: z.string().optional(),
-  event: z.string().min(1),
-  properties: z.record(z.unknown()).optional(),
-  timestamp: z.string().datetime().optional(),
-});
-
-// CORS headers so the widget can POST from any origin
+// CORS so the widget can POST from any customer domain
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, X-Requested-With",
 };
 
 export async function OPTIONS() {
@@ -44,10 +27,14 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: NextRequest) {
-  let body: unknown;
-
+  // Parse body: the widget sends Content-Type text/plain with a JSON body
+  // (text/plain is a CORS-safelisted type — no preflight needed). We read
+  // the raw text first and JSON.parse manually so the content-type header
+  // never causes a body-parser rejection.
+  let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    const raw = await request.text();
+    body = JSON.parse(raw);
   } catch {
     return NextResponse.json(
       { error: "Invalid JSON body" },
@@ -55,55 +42,80 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const parsed = eventSchema.safeParse(body);
-  if (!parsed.success) {
+  const apiKey = typeof body.api_key === "string" ? body.api_key.trim() : "";
+  if (!apiKey) {
     return NextResponse.json(
-      { error: "Validation failed", details: parsed.error.flatten() },
-      { status: 422, headers: CORS_HEADERS }
+      { error: "api_key is required" },
+      { status: 400, headers: CORS_HEADERS }
     );
   }
 
-  const { api_key, user_id, email, name, event, properties, timestamp } =
-    parsed.data;
+  // Capture the origin of the request so we can filter by website on the
+  // dashboard. Prefer the Origin header; fall back to the Referer host.
+  const rawOrigin =
+    request.headers.get("origin") ||
+    (() => {
+      const ref = request.headers.get("referer") ?? "";
+      try {
+        return ref ? new URL(ref).origin : "";
+      } catch {
+        return "";
+      }
+    })();
+  const origin = rawOrigin || null;
 
-  // Look up workspace by API key
-  const workspace = await getWorkspaceByApiKey(api_key);
-  if (!workspace) {
-    return NextResponse.json(
-      { error: "Invalid API key" },
-      { status: 401, headers: CORS_HEADERS }
-    );
-  }
+  const supabase = createSupabaseAdminClient();
 
-  // Upsert the end user (create if new, update last_seen if existing)
-  const endUser = await upsertEndUser({
-    workspaceId: workspace.id,
-    externalId: user_id,
-    email: email ?? `${user_id}@unknown.invalid`,
-    name,
-    metadata: {},
+  // Look up the workspace this api_key belongs to
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("id")
+    .eq("api_key", apiKey)
+    .maybeSingle();
+
+  // Fallback to the seeded test workspace so we can build/test without auth.
+  const workspaceId = workspace?.id ?? TEST_WORKSPACE_ID;
+
+  const eventType =
+    typeof body.event_type === "string" && body.event_type
+      ? body.event_type
+      : "page_view";
+
+  // Email can come top-level or nested in properties.email
+  const props =
+    body.properties && typeof body.properties === "object"
+      ? (body.properties as Record<string, unknown>)
+      : {};
+  const email =
+    typeof body.email === "string" && body.email
+      ? body.email
+      : typeof props.email === "string" && props.email
+        ? (props.email as string)
+        : null;
+
+  const { error } = await supabase.from("events").insert({
+    workspace_id: workspaceId,
+    user_id: typeof body.user_id === "string" ? body.user_id : null,
+    event_type: eventType,
+    event_name: eventType,
+    email,
+    page: typeof body.page === "string" ? body.page : null,
+    origin,
+    properties:
+      body.properties && typeof body.properties === "object"
+        ? body.properties
+        : {},
+    occurred_at:
+      typeof body.timestamp === "string" ? body.timestamp : new Date().toISOString(),
   });
 
-  if (!endUser) {
+  if (error) {
+    console.error("[/api/events] insert failed:", error.message, error.code);
     return NextResponse.json(
-      { error: "Failed to upsert user" },
+      { error: "Failed to store event" },
       { status: 500, headers: CORS_HEADERS }
     );
   }
 
-  // Map the event name to a typed event_type (fall back to "custom")
-  const eventType: Event["event_type"] =
-    KNOWN_EVENT_TYPES[event] ??
-    (workspace.key_feature_event === event ? "key_feature_used" : "custom");
-
-  await insertEvent({
-    workspaceId: workspace.id,
-    endUserId: endUser.id,
-    eventType,
-    eventName: event,
-    properties: properties ?? {},
-    occurredAt: timestamp,
-  });
-
-  return NextResponse.json({ ok: true }, { headers: CORS_HEADERS });
+  return NextResponse.json({ ok: true }, { status: 200, headers: CORS_HEADERS });
 }

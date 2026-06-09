@@ -2,184 +2,139 @@
 /**
  * scripts/run-migrations.js
  *
- * Runs all SQL migration files in db/migrations/ against Supabase.
- * Connects via the Supabase session pooler using the service role key
- * as the JWT password (supported on Supabase's newer Supavisor infrastructure).
+ * Runs all SQL migration files against Supabase via the Management API.
+ * Requires SUPABASE_ACCESS_TOKEN in .env.local (a Personal Access Token).
+ *
+ * Get one at: https://supabase.com/dashboard/account/tokens
+ * Add it to .env.local:  SUPABASE_ACCESS_TOKEN=sbp_xxxxxxxxxxxx
  *
  * Usage:
  *   node scripts/run-migrations.js
+ *   node scripts/run-migrations.js db/migrations/combined_migration.sql  (run one file)
  */
 
-require("dotenv").config({ path: ".env.local" });
 const fs = require("fs");
 const path = require("path");
-const { Client } = require("pg");
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Read .env.local directly (avoids stale/empty injected env overriding real values)
+const envPath = path.join(__dirname, "..", ".env.local");
+function readEnvVar(name) {
+  try {
+    const content = fs.readFileSync(envPath, "utf8");
+    for (const line of content.split(/\r?\n/)) {
+      if (line.startsWith(name + "=")) return line.slice(name.length + 1).trim();
+    }
+  } catch {}
+  return "";
+}
 
-if (!supabaseUrl || !serviceKey) {
-  console.error("❌  Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local");
+// Token priority: --token=xxx CLI arg > .env.local file > process.env
+const tokenArg = process.argv.find((a) => a.startsWith("--token="));
+const cliToken = tokenArg ? tokenArg.split("=")[1] : "";
+
+const supabaseUrl =
+  readEnvVar("NEXT_PUBLIC_SUPABASE_URL") || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const accessToken =
+  cliToken || readEnvVar("SUPABASE_ACCESS_TOKEN") || process.env.SUPABASE_ACCESS_TOKEN;
+
+if (!supabaseUrl) {
+  console.error("❌  Missing NEXT_PUBLIC_SUPABASE_URL in .env.local");
   process.exit(1);
 }
 
-// Extract project ref from the Supabase URL
-// e.g. https://gjihgmjzpwewcaqnbbtf.supabase.co  →  gjihgmjzpwewcaqnbbtf
-const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
+if (!accessToken) {
+  console.error(`
+❌  Missing SUPABASE_ACCESS_TOKEN in .env.local
 
-// Connection options to try in order:
-// 1. Direct DB host  (newer infra accepts JWT as password)
-// 2. Session pooler  (Supavisor, port 5432)
-const CONNECTION_OPTIONS = [
-  {
-    label: "Direct connection",
-    config: {
-      host: `db.${projectRef}.supabase.co`,
-      port: 5432,
-      database: "postgres",
-      user: "postgres",
-      password: serviceKey,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 10000,
-    },
-  },
-  {
-    label: "Session pooler (us-east-1)",
-    config: {
-      host: `aws-0-us-east-1.pooler.supabase.com`,
-      port: 5432,
-      database: "postgres",
-      user: `postgres.${projectRef}`,
-      password: serviceKey,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 10000,
-    },
-  },
-  {
-    label: "Session pooler (us-west-1)",
-    config: {
-      host: `aws-0-us-west-1.pooler.supabase.com`,
-      port: 5432,
-      database: "postgres",
-      user: `postgres.${projectRef}`,
-      password: serviceKey,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 10000,
-    },
-  },
-  {
-    label: "Session pooler (eu-west-1)",
-    config: {
-      host: `aws-0-eu-west-1.pooler.supabase.com`,
-      port: 5432,
-      database: "postgres",
-      user: `postgres.${projectRef}`,
-      password: serviceKey,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 10000,
-    },
-  },
-  {
-    label: "Session pooler (ap-south-1)",
-    config: {
-      host: `aws-0-ap-south-1.pooler.supabase.com`,
-      port: 5432,
-      database: "postgres",
-      user: `postgres.${projectRef}`,
-      password: serviceKey,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 10000,
-    },
-  },
-  {
-    label: "Session pooler (ap-southeast-1)",
-    config: {
-      host: `aws-0-ap-southeast-1.pooler.supabase.com`,
-      port: 5432,
-      database: "postgres",
-      user: `postgres.${projectRef}`,
-      password: serviceKey,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 10000,
-    },
-  },
-];
+To fix this:
+1. Go to https://supabase.com/dashboard/account/tokens
+2. Click "Generate new token", give it a name like "ConversionCRM dev"
+3. Copy the token (starts with sbp_...)
+4. Add to .env.local:
+   SUPABASE_ACCESS_TOKEN=sbp_xxxxxxxxxxxx
 
-async function tryConnect() {
-  for (const option of CONNECTION_OPTIONS) {
-    process.stdout.write(`  Trying ${option.label}... `);
-    const client = new Client(option.config);
-    try {
-      await client.connect();
-      await client.query("SELECT 1");
-      console.log("✅  Connected!");
-      return client;
-    } catch (err) {
-      console.log(`❌  ${err.message.split("\n")[0]}`);
-      try { await client.end(); } catch {}
-    }
-  }
-  return null;
+Once added, re-run: node scripts/run-migrations.js
+`);
+  process.exit(1);
 }
 
-async function runMigrations(client) {
-  const migrationsDir = path.join(__dirname, "..", "db", "migrations");
-  const files = fs
-    .readdirSync(migrationsDir)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
+// Extract project ref from URL: https://PROJECTREF.supabase.co
+const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
+const apiUrl = `https://api.supabase.com/v1/projects/${projectRef}/database/query`;
 
-  console.log(`\n📂  Found ${files.length} migration file(s):\n`);
+/**
+ * Executes a SQL string via the Supabase Management API.
+ */
+async function runSql(sql) {
+  const res = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query: sql }),
+  });
 
-  for (const file of files) {
-    const filePath = path.join(migrationsDir, file);
+  const text = await res.text();
+  if (!res.ok) {
+    let msg = text;
+    try { msg = JSON.parse(text)?.message ?? text; } catch {}
+    throw new Error(`HTTP ${res.status}: ${msg}`);
+  }
+  return text;
+}
+
+async function main() {
+  // Allow running a specific file: node scripts/run-migrations.js path/to/file.sql
+  const specificFile = process.argv
+    .slice(2)
+    .find((a) => !a.startsWith("--"));
+
+  let files;
+  if (specificFile) {
+    files = [path.resolve(process.cwd(), specificFile)];
+  } else {
+    const migrationsDir = path.join(__dirname, "..", "db", "migrations");
+    files = fs
+      .readdirSync(migrationsDir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .map((f) => path.join(migrationsDir, f));
+  }
+
+  console.log(`\n🔌  Connected to project: ${projectRef}`);
+  console.log(`📂  Running ${files.length} migration file(s):\n`);
+
+  for (const filePath of files) {
+    const fileName = path.basename(filePath);
     const sql = fs.readFileSync(filePath, "utf8");
 
-    console.log(`  ▶  Running ${file}...`);
+    process.stdout.write(`  ▶  ${fileName} ... `);
     try {
-      await client.query(sql);
-      console.log(`     ✅  Done`);
+      const result = await runSql(sql);
+      console.log("✅  Done");
+      // Echo rows for SELECT/verification queries
+      try {
+        const rows = JSON.parse(result);
+        if (Array.isArray(rows) && rows.length) {
+          console.log(JSON.stringify(rows, null, 2));
+        }
+      } catch {}
     } catch (err) {
-      // If the error is "already exists" — skip it (idempotent run)
-      if (
-        err.message.includes("already exists") ||
-        err.message.includes("duplicate")
-      ) {
-        console.log(`     ⚠️   Already applied (skipped)`);
+      const msg = err.message;
+      if (msg.includes("already exists") || msg.includes("duplicate")) {
+        console.log("⚠️   Already applied (skipped)");
       } else {
-        console.error(`     ❌  Error: ${err.message}`);
-        throw err;
+        console.log(`❌  Failed\n     ${msg}`);
+        process.exit(1);
       }
     }
   }
+
+  console.log("\n✅  All migrations complete!\n");
 }
 
-(async () => {
-  console.log("\n🔌  Connecting to Supabase...\n");
-
-  const client = await tryConnect();
-
-  if (!client) {
-    console.error(`
-❌  Could not connect with any method.
-
-This usually means the service role key cannot be used as a direct database
-password on your Supabase plan. To run migrations manually:
-
-1. Go to: https://supabase.com/dashboard/project/${projectRef}/sql/new
-2. Paste and run:  db/migrations/001_initial_schema.sql
-3. Then run:       db/migrations/002_add_product_name.sql
-`);
-    process.exit(1);
-  }
-
-  try {
-    await runMigrations(client);
-    console.log("\n✅  All migrations complete!\n");
-  } catch (err) {
-    console.error("\n❌  Migration failed:", err.message);
-    process.exit(1);
-  } finally {
-    await client.end();
-  }
-})();
+main().catch((err) => {
+  console.error("❌  Unexpected error:", err.message);
+  process.exit(1);
+});
