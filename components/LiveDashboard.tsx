@@ -3,7 +3,11 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
-import type { LifecycleStage } from "@/types";
+import type { EmailTrigger, LifecycleStage } from "@/types";
+import {
+  STAGE_EMAIL_COLUMNS,
+  type UserEmailsSent,
+} from "@/lib/emails/stage-email-columns";
 import {
   Users,
   Activity,
@@ -16,6 +20,7 @@ import {
   Mail,
   FileText,
   Clock,
+  Check,
 } from "lucide-react";
 
 type ClickTarget = { label: string; count: number };
@@ -85,6 +90,7 @@ type LiveUser = {
   user_id: string;
   email: string | null;
   stage: LifecycleStage;
+  emails_sent: UserEmailsSent;
   engagement_score: number;
   score_breakdown: WeeklyScoreBreakdown;
   events: number;
@@ -103,9 +109,15 @@ type LiveUser = {
 };
 
 type LiveData = {
-  workspace: { id: string; name: string; website_url: string | null };
+  workspace: {
+    id: string;
+    name: string;
+    website_url: string | null;
+    reply_to_configured?: boolean;
+  };
   range: DashboardDateRange;
   filtered: boolean;
+  emailBatch?: { sent: number; errors: string[] };
   users: LiveUser[];
   totals: {
     users: number;
@@ -142,6 +154,22 @@ function ScoreBadge({
       title={`Engagement score (${periodLabel}): ${score}/100`}
     >
       {score}
+    </span>
+  );
+}
+
+function EmailSentTick({ sent }: { sent: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 w-6 items-center justify-center rounded-md border",
+        sent
+          ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+          : "border-gray-100 bg-gray-50 text-gray-300"
+      )}
+      title={sent ? "Email sent" : "Not sent yet"}
+    >
+      {sent ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : null}
     </span>
   );
 }
@@ -458,6 +486,20 @@ export function LiveDashboard() {
 
       <FilterBanner data={data} />
 
+      {data?.emailBatch && data.emailBatch.sent > 0 && (
+        <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-lg px-4 py-2.5 text-xs text-emerald-800">
+          <Check className="h-3.5 w-3.5" />
+          Sent {data.emailBatch.sent} automated email
+          {data.emailBatch.sent === 1 ? "" : "s"} this session.
+        </div>
+      )}
+
+      {data?.workspace.reply_to_configured === false && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-lg px-4 py-2.5 text-xs text-amber-800">
+          Add your reply-to Gmail in Settings to enable automated emails.
+        </div>
+      )}
+
       {/* Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <Metric
@@ -540,6 +582,20 @@ export function LiveUsersPanel() {
       )}
 
       <FilterBanner data={data} />
+
+      {data?.emailBatch && data.emailBatch.sent > 0 && (
+        <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-lg px-4 py-2.5 text-xs text-emerald-800">
+          <Check className="h-3.5 w-3.5" />
+          Sent {data.emailBatch.sent} automated email
+          {data.emailBatch.sent === 1 ? "" : "s"} this session.
+        </div>
+      )}
+
+      {data?.workspace.reply_to_configured === false && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-lg px-4 py-2.5 text-xs text-amber-800">
+          Add your reply-to Gmail in Settings to enable automated emails.
+        </div>
+      )}
 
       <LiveUsersTable
         users={data?.users ?? null}
@@ -628,6 +684,17 @@ export function LiveUsersTable({
                 <th className="px-3 py-2.5 font-medium">Clicks</th>
                 <th className="px-3 py-2.5 font-medium">Last activity</th>
                 <th className="px-3 py-2.5 font-medium">Last seen</th>
+                {STAGE_EMAIL_COLUMNS.map((col) => (
+                  <th
+                    key={`${col.stage}-${col.trigger}`}
+                    className="px-2 py-2.5 font-medium text-center min-w-[4.5rem]"
+                  >
+                    <div className="leading-tight">{col.stageLabel}</div>
+                    <div className="text-[10px] font-normal normal-case text-gray-400 mt-0.5">
+                      {col.emailLabel}
+                    </div>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -928,11 +995,21 @@ function UserRow({
         <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap">
           {formatDistanceToNow(new Date(user.last_seen), { addSuffix: true })}
         </td>
+        {STAGE_EMAIL_COLUMNS.map((col) => (
+          <td
+            key={`${col.stage}-${col.trigger}`}
+            className="px-2 py-3 text-center align-middle"
+          >
+            <EmailSentTick
+              sent={user.emails_sent?.[col.trigger as EmailTrigger] ?? false}
+            />
+          </td>
+        ))}
       </tr>
 
       {expanded && (
         <tr className="bg-indigo-50/40">
-          <td colSpan={12} className="px-4 py-4">
+          <td colSpan={12 + STAGE_EMAIL_COLUMNS.length} className="px-4 py-4">
             <PageAnalyticsPanel
               user={user}
               showActivityInline={showActivityInline}

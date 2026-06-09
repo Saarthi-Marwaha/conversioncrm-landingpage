@@ -9,6 +9,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { getActiveWorkspace } from "@/lib/active-workspace";
 import { assignStagesForWorkspace } from "@/lib/cron/assign-stages";
+import { runAutomatedEmailsForWorkspace } from "@/lib/cron/run-automated-emails";
+import {
+  AUTOMATED_TRIGGERS,
+  emptyEmailsSent,
+  type UserEmailsSent,
+} from "@/lib/emails/stage-email-columns";
+import type { EmailTrigger } from "@/types";
 import {
   computeWeeklyEngagementScore,
   type ScoringEvent,
@@ -69,6 +76,7 @@ type LiveUser = {
   user_id: string;
   email: string | null;
   stage: LifecycleStage;
+  emails_sent: UserEmailsSent;
   engagement_score: number;
   score_breakdown: WeeklyScoreBreakdown;
   events: number;
@@ -188,6 +196,7 @@ export async function GET(request: NextRequest) {
         user_id: ev.user_id,
         email: ev.email ?? null,
         stage: "signup",
+        emails_sent: emptyEmailsSent(),
         engagement_score: 0,
         score_breakdown: {
           seen_this_week: 0,
@@ -363,14 +372,74 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const { data: emailLogRows } = await admin
+    .from("email_logs")
+    .select("user_id, trigger")
+    .eq("workspace_id", workspace.id)
+    .eq("status", "sent")
+    .not("user_id", "is", null);
+
+  const sentTriggersByUser = new Map<string, Set<EmailTrigger>>();
+  for (const row of emailLogRows ?? []) {
+    if (!row.user_id || !row.trigger) continue;
+    let set = sentTriggersByUser.get(row.user_id);
+    if (!set) {
+      set = new Set();
+      sentTriggersByUser.set(row.user_id, set);
+    }
+    set.add(row.trigger as EmailTrigger);
+  }
+
+  for (const u of users) {
+    const sent = sentTriggersByUser.get(u.user_id);
+    const emailsSent = emptyEmailsSent();
+    for (const trigger of AUTOMATED_TRIGGERS) {
+      emailsSent[trigger] = sent?.has(trigger) ?? false;
+    }
+    u.emails_sent = emailsSent;
+  }
+
+  let emailBatch = { sent: 0, errors: [] as string[] };
+  if (workspace.reply_to_email?.trim()) {
+    emailBatch = await runAutomatedEmailsForWorkspace(workspace.id);
+    if (emailBatch.sent > 0) {
+      const { data: freshLogs } = await admin
+        .from("email_logs")
+        .select("user_id, trigger")
+        .eq("workspace_id", workspace.id)
+        .eq("status", "sent")
+        .not("user_id", "is", null);
+
+      const freshByUser = new Map<string, Set<EmailTrigger>>();
+      for (const row of freshLogs ?? []) {
+        if (!row.user_id || !row.trigger) continue;
+        let set = freshByUser.get(row.user_id);
+        if (!set) {
+          set = new Set();
+          freshByUser.set(row.user_id, set);
+        }
+        set.add(row.trigger as EmailTrigger);
+      }
+
+      for (const u of users) {
+        const sentSet = freshByUser.get(u.user_id);
+        for (const trigger of AUTOMATED_TRIGGERS) {
+          u.emails_sent[trigger] = sentSet?.has(trigger) ?? false;
+        }
+      }
+    }
+  }
+
   return NextResponse.json({
     workspace: {
       id: workspace.id,
       name: workspace.name,
       website_url: workspace.website_url ?? null,
+      reply_to_configured: !!workspace.reply_to_email,
     },
     range,
     filtered: !!siteOrigin,
+    emailBatch,
     users,
     totals: {
       users: users.length,

@@ -51,6 +51,7 @@ export interface Workspace {
   product_name: string | null;
   website_url: string | null;
   reply_to_email: string | null;
+  emails_last_run_at: string | null;
   key_feature_name: string | null;
   key_feature_event: string | null;
   trial_length_days: number;

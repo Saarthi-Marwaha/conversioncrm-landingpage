@@ -231,6 +231,152 @@ export function planStageEmail(
   }
 }
 
+const BATCH_COOLDOWN_MS = 23 * 60 * 60 * 1000;
+
+export function shouldRunEmailBatch(
+  emailsLastRunAt: string | null | undefined
+): boolean {
+  if (!emailsLastRunAt) return true;
+  return Date.now() - new Date(emailsLastRunAt).getTime() >= BATCH_COOLDOWN_MS;
+}
+
+async function processWorkspaceEmails(
+  ws: WorkspaceRow,
+  result: RunAutomatedEmailsResult
+): Promise<void> {
+  const supabase = createSupabaseAdminClient();
+
+  const [
+    { data: stageRows, error: stageError },
+    { data: events, error: evError },
+    { data: scores },
+  ] = await Promise.all([
+        supabase
+          .from("stages")
+          .select("user_id, stage")
+          .eq("workspace_id", ws.id),
+        supabase
+          .from("events")
+          .select("user_id, email, event_type, page, properties, occurred_at")
+          .eq("workspace_id", ws.id)
+          .not("user_id", "is", null),
+        supabase
+          .from("engagement_scores")
+          .select("user_id, score")
+          .eq("workspace_id", ws.id),
+  ]);
+
+  if (stageError) {
+    result.errors.push(`workspace:${ws.id} stages – ${stageError.message}`);
+    return;
+  }
+  if (evError) {
+    result.errors.push(`workspace:${ws.id} events – ${evError.message}`);
+    return;
+  }
+
+  const scoreByUser = new Map<string, number>();
+  for (const row of scores ?? []) {
+    if (row.user_id) scoreByUser.set(row.user_id, row.score ?? 0);
+  }
+
+  const eventsByUser = new Map<string, EventRow[]>();
+  for (const ev of (events ?? []) as EventRow[]) {
+    if (!ev.user_id) continue;
+    const list = eventsByUser.get(ev.user_id) ?? [];
+    list.push(ev);
+    eventsByUser.set(ev.user_id, list);
+  }
+
+  for (const row of (stageRows ?? []) as StageRow[]) {
+    const userEvents = eventsByUser.get(row.user_id) ?? [];
+    const email = resolveEmail(userEvents);
+    if (!email || email.includes("@anon.")) continue;
+
+    const user: UserContext = {
+      user_id: row.user_id,
+      email,
+      stage: row.stage,
+      events: userEvents,
+      score: scoreByUser.get(row.user_id) ?? 0,
+    };
+
+    const plan = planStageEmail(user, ws);
+    if (!plan) continue;
+
+    const cooldown = COOLDOWN_HOURS[plan.trigger];
+    if (
+      await wasEmailSentRecently(ws.id, user.user_id, plan.trigger, cooldown)
+    ) {
+      continue;
+    }
+
+    const ok = await sendEmail({
+      to: user.email,
+      subject: plan.subject,
+      react: plan.react,
+      trigger: plan.trigger,
+      workspaceId: ws.id,
+      userId: user.user_id,
+      replyTo: ws.reply_to_email,
+      metadata: {
+        recipient_email: user.email,
+        stage: user.stage,
+      },
+    });
+
+    if (ok) {
+      result.sent++;
+    } else {
+      result.errors.push(`${ws.id}/${user.user_id}/${plan.trigger}`);
+    }
+  }
+}
+
+export async function runAutomatedEmailsForWorkspace(
+  workspaceId: string
+): Promise<RunAutomatedEmailsResult> {
+  const supabase = createSupabaseAdminClient();
+  const result: RunAutomatedEmailsResult = { sent: 0, errors: [] };
+
+  const { data: ws, error } = await supabase
+    .from("workspaces")
+    .select(
+      "id, name, product_name, website_url, key_feature_name, reply_to_email, emails_last_run_at"
+    )
+    .eq("id", workspaceId)
+    .single();
+
+  if (error || !ws) {
+    result.errors.push(error?.message ?? "workspace not found");
+    return result;
+  }
+
+  const workspace = ws as WorkspaceRow & { emails_last_run_at?: string | null };
+  if (!workspace.reply_to_email?.trim()) {
+    return result;
+  }
+
+  if (!shouldRunEmailBatch(workspace.emails_last_run_at)) {
+    return result;
+  }
+
+  try {
+    await processWorkspaceEmails(workspace, result);
+    // Stamp batch time when sends succeeded or everyone was already caught up.
+    if (result.sent > 0 || result.errors.length === 0) {
+      await supabase
+        .from("workspaces")
+        .update({ emails_last_run_at: new Date().toISOString() })
+        .eq("id", workspaceId);
+    }
+  } catch (err) {
+    result.errors.push(`workspace:${workspaceId} – ${String(err)}`);
+  }
+
+  return result;
+}
+
 export async function runAutomatedEmails(): Promise<RunAutomatedEmailsResult> {
   const supabase = createSupabaseAdminClient();
   const result: RunAutomatedEmailsResult = { sent: 0, errors: [] };
@@ -248,102 +394,8 @@ export async function runAutomatedEmails(): Promise<RunAutomatedEmailsResult> {
 
   for (const ws of (workspaces ?? []) as WorkspaceRow[]) {
     if (!ws.reply_to_email?.trim()) continue;
-
     try {
-      const [
-        { data: stageRows, error: stageError },
-        { data: events, error: evError },
-        { data: scores },
-      ] = await Promise.all([
-        supabase
-          .from("stages")
-          .select("user_id, stage")
-          .eq("workspace_id", ws.id),
-        supabase
-          .from("events")
-          .select("user_id, email, event_type, page, properties, occurred_at")
-          .eq("workspace_id", ws.id)
-          .not("user_id", "is", null),
-        supabase
-          .from("engagement_scores")
-          .select("user_id, score")
-          .eq("workspace_id", ws.id),
-      ]);
-
-      if (stageError) {
-        result.errors.push(`workspace:${ws.id} stages – ${stageError.message}`);
-        continue;
-      }
-      if (evError) {
-        result.errors.push(`workspace:${ws.id} events – ${evError.message}`);
-        continue;
-      }
-
-      const scoreByUser = new Map<string, number>();
-      for (const row of scores ?? []) {
-        if (row.user_id) scoreByUser.set(row.user_id, row.score ?? 0);
-      }
-
-      const eventsByUser = new Map<string, EventRow[]>();
-      for (const ev of (events ?? []) as EventRow[]) {
-        if (!ev.user_id) continue;
-        const list = eventsByUser.get(ev.user_id) ?? [];
-        list.push(ev);
-        eventsByUser.set(ev.user_id, list);
-      }
-
-      for (const row of (stageRows ?? []) as StageRow[]) {
-        const userEvents = eventsByUser.get(row.user_id) ?? [];
-        const email = resolveEmail(userEvents);
-        if (!email || email.includes("@anon.")) continue;
-
-        const user: UserContext = {
-          user_id: row.user_id,
-          email,
-          stage: row.stage,
-          events: userEvents,
-          score: scoreByUser.get(row.user_id) ?? 0,
-        };
-
-        const plan = planStageEmail(user, ws);
-        if (!plan) continue;
-
-        const cooldown = COOLDOWN_HOURS[plan.trigger];
-        if (
-          await wasEmailSentRecently(
-            ws.id,
-            user.user_id,
-            plan.trigger,
-            cooldown
-          )
-        ) {
-          continue;
-        }
-
-        const ok = await sendEmail({
-          to: user.email,
-          subject: plan.subject,
-          react: plan.react,
-          trigger: plan.trigger,
-          workspaceId: ws.id,
-          userId: user.user_id,
-          replyTo: ws.reply_to_email,
-          metadata: {
-            recipient_email: user.email,
-            stage: user.stage,
-          },
-        });
-
-        if (ok) {
-          result.sent++;
-        } else {
-          result.errors.push(
-            `${ws.id}/${user.user_id}/${plan.trigger}`
-          );
-        }
-
-        // At most one email per user per nightly run.
-      }
+      await processWorkspaceEmails(ws, result);
     } catch (err) {
       result.errors.push(`workspace:${ws.id} – ${String(err)}`);
     }
