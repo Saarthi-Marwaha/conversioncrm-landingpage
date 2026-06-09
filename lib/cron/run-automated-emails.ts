@@ -1,5 +1,7 @@
 /**
  * Nightly automated end-user emails — runs after scoring + stage assignment.
+ *
+ * One email per user per night, chosen from their current row in `stages`.
  */
 import React from "react";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
@@ -11,7 +13,7 @@ import { CheckInEmail } from "@/emails/templates/CheckIn";
 import { UpgradeOfferEmail } from "@/emails/templates/UpgradeOffer";
 import { UrgencyEmail } from "@/emails/templates/Urgency";
 import { ChurnPreventionEmail } from "@/emails/templates/ChurnPrevention";
-import type { EmailTrigger } from "@/types";
+import type { EmailTrigger, LifecycleStage } from "@/types";
 
 export type RunAutomatedEmailsResult = {
   sent: number;
@@ -32,14 +34,26 @@ type EventRow = {
   email: string | null;
   event_type: string;
   page: string | null;
+  properties: Record<string, unknown> | null;
   occurred_at: string;
 };
 
-const HOURS = (days: number) => days * 24;
+type StageRow = {
+  user_id: string;
+  stage: LifecycleStage;
+};
 
-function isSignupEvent(type: string): boolean {
-  return /sign[_-]?up|register/i.test(type);
-}
+/** Cooldown windows per trigger (hours). `null` = only send if never sent before. */
+const COOLDOWN_HOURS: Record<EmailTrigger, number | null> = {
+  welcome: null,
+  feature_nudge: 5 * 24,
+  value_demo: 7 * 24,
+  check_in: 10 * 24,
+  upgrade_offer: 7 * 24,
+  urgency: 24,
+  churn_prevention: 25 * 24,
+  daily_summary: 24,
+};
 
 function isPageView(type: string): boolean {
   return /page[_-]?view/i.test(type);
@@ -47,6 +61,14 @@ function isPageView(type: string): boolean {
 
 function isFeatureUsed(type: string): boolean {
   return type === "feature_used" || type === "key_feature_used";
+}
+
+function isPricingVisit(ev: EventRow): boolean {
+  if (ev.event_type === "pricing_page_visit") return true;
+  return (
+    isPageView(ev.event_type) &&
+    (ev.page?.toLowerCase().includes("pricing") ?? false)
+  );
 }
 
 function msAgo(days: number): number {
@@ -60,44 +82,153 @@ function appUrlFor(ws: WorkspaceRow): string {
 }
 
 function pricingUrlFor(ws: WorkspaceRow): string {
-  const base = appUrlFor(ws);
-  return `${base}/pricing`;
+  return `${appUrlFor(ws)}/pricing`;
 }
 
-type UserBundle = {
+function resolveEmail(events: EventRow[]): string | null {
+  for (const ev of events) {
+    if (ev.email?.trim()) return ev.email.trim();
+    const props = ev.properties ?? {};
+    const fromProps = props.email;
+    if (typeof fromProps === "string" && fromProps.trim()) {
+      return fromProps.trim();
+    }
+  }
+  return null;
+}
+
+type UserContext = {
   user_id: string;
   email: string;
+  stage: LifecycleStage;
   events: EventRow[];
   score: number;
 };
 
-async function trySend(
-  opts: {
-    workspace: WorkspaceRow;
-    user: UserBundle;
-    trigger: EmailTrigger;
-    subject: string;
-    react: React.ReactElement;
-  },
-  result: { sent: number; errors: string[] }
-): Promise<void> {
-  const { workspace, user, trigger, subject, react } = opts;
+type EmailPlan = {
+  trigger: EmailTrigger;
+  subject: string;
+  react: React.ReactElement;
+};
 
-  if (!workspace.reply_to_email) return;
+/**
+ * Pick the single email for tonight based on lifecycle stage.
+ * Returns null when no email should be sent for this user tonight.
+ */
+export function planStageEmail(
+  user: UserContext,
+  ws: WorkspaceRow
+): EmailPlan | null {
+  const productName = ws.product_name ?? ws.name;
+  const appUrl = appUrlFor(ws);
+  const pricingUrl = pricingUrlFor(ws);
+  const keyFeature = ws.key_feature_name ?? "the key feature";
+  const displayName = user.email.split("@")[0] || user.email;
+  const evts = user.events;
 
-  const ok = await sendEmail({
-    to: user.email,
-    subject,
-    react,
-    trigger,
-    workspaceId: workspace.id,
-    userId: user.user_id,
-    replyTo: workspace.reply_to_email,
-    metadata: { recipient_email: user.email },
-  });
+  switch (user.stage) {
+    case "paid":
+      return null;
 
-  if (ok) result.sent++;
-  else result.errors.push(`${workspace.id}/${user.user_id}/${trigger}`);
+    case "signup":
+      return {
+        trigger: "welcome",
+        subject: `Welcome to ${productName}`,
+        react: React.createElement(WelcomeEmail, {
+          userName: displayName,
+          appUrl,
+          productName,
+        }),
+      };
+
+    case "onboarding": {
+      const featureUsedIn5d = evts.some(
+        (e) =>
+          isFeatureUsed(e.event_type) &&
+          new Date(e.occurred_at).getTime() >= msAgo(5)
+      );
+      if (featureUsedIn5d) return null;
+      return {
+        trigger: "feature_nudge",
+        subject: `Try ${keyFeature} in ${productName}`,
+        react: React.createElement(FeatureNudgeEmail, {
+          userName: displayName,
+          keyFeatureName: keyFeature,
+          appUrl,
+          productName,
+        }),
+      };
+    }
+
+    case "active": {
+      const pageViews7d = evts.filter(
+        (e) =>
+          isPageView(e.event_type) &&
+          new Date(e.occurred_at).getTime() >= msAgo(7)
+      ).length;
+      if (pageViews7d < 3) return null;
+      return {
+        trigger: "value_demo",
+        subject: `You're exploring ${productName} — nice work`,
+        react: React.createElement(ValueDemoEmail, {
+          userName: displayName,
+          appUrl,
+          productName,
+        }),
+      };
+    }
+
+    case "going_quiet":
+      return {
+        trigger: "check_in",
+        subject: `Checking in on your ${productName} account`,
+        react: React.createElement(CheckInEmail, {
+          userName: displayName,
+          appUrl,
+          productName,
+        }),
+      };
+
+    case "conversion_ready": {
+      const visitedPricing = evts.some((e) => isPricingVisit(e));
+      if (visitedPricing) {
+        return {
+          trigger: "urgency",
+          subject: `Questions about ${productName} pricing?`,
+          react: React.createElement(UrgencyEmail, {
+            userName: displayName,
+            pricingUrl,
+            productName,
+          }),
+        };
+      }
+      return {
+        trigger: "upgrade_offer",
+        subject: `You're ready to upgrade ${productName}`,
+        react: React.createElement(UpgradeOfferEmail, {
+          userName: displayName,
+          score: user.score,
+          checkoutUrl: pricingUrl,
+          appUrl,
+          productName,
+        }),
+      };
+    }
+
+    case "churned":
+      return {
+        trigger: "churn_prevention",
+        subject: `We'd love to see you back on ${productName}`,
+        react: React.createElement(ChurnPreventionEmail, {
+          userName: displayName,
+          appUrl,
+          productName,
+        }),
+      };
+
+    default:
+      return null;
+  }
 }
 
 export async function runAutomatedEmails(): Promise<RunAutomatedEmailsResult> {
@@ -115,282 +246,103 @@ export async function runAutomatedEmails(): Promise<RunAutomatedEmailsResult> {
     return { sent: 0, errors: [wsError.message] };
   }
 
-  const now = Date.now();
-
   for (const ws of (workspaces ?? []) as WorkspaceRow[]) {
     if (!ws.reply_to_email?.trim()) continue;
 
     try {
-      const { data: events, error: evError } = await supabase
-        .from("events")
-        .select("user_id, email, event_type, page, occurred_at")
-        .eq("workspace_id", ws.id)
-        .not("user_id", "is", null)
-        .order("occurred_at", { ascending: false });
-
-      if (evError) {
-        result.errors.push(`workspace:${ws.id} events – ${evError.message}`);
-        continue;
-      }
-
-      const [{ data: scores }, { data: stageRows }] = await Promise.all([
-        supabase
-          .from("engagement_scores")
-          .select("user_id, score")
-          .eq("workspace_id", ws.id),
+      const [
+        { data: stageRows, error: stageError },
+        { data: events, error: evError },
+        { data: scores },
+      ] = await Promise.all([
         supabase
           .from("stages")
           .select("user_id, stage")
           .eq("workspace_id", ws.id),
+        supabase
+          .from("events")
+          .select("user_id, email, event_type, page, properties, occurred_at")
+          .eq("workspace_id", ws.id)
+          .not("user_id", "is", null),
+        supabase
+          .from("engagement_scores")
+          .select("user_id, score")
+          .eq("workspace_id", ws.id),
       ]);
+
+      if (stageError) {
+        result.errors.push(`workspace:${ws.id} stages – ${stageError.message}`);
+        continue;
+      }
+      if (evError) {
+        result.errors.push(`workspace:${ws.id} events – ${evError.message}`);
+        continue;
+      }
 
       const scoreByUser = new Map<string, number>();
       for (const row of scores ?? []) {
         if (row.user_id) scoreByUser.set(row.user_id, row.score ?? 0);
       }
 
-      const stageByUser = new Map<string, string>();
-      for (const row of stageRows ?? []) {
-        if (row.user_id && row.stage) stageByUser.set(row.user_id, row.stage);
-      }
-
-      const byUser = new Map<string, UserBundle>();
-
+      const eventsByUser = new Map<string, EventRow[]>();
       for (const ev of (events ?? []) as EventRow[]) {
         if (!ev.user_id) continue;
-
-        let bundle = byUser.get(ev.user_id);
-        if (!bundle) {
-          bundle = {
-            user_id: ev.user_id,
-            email: ev.email ?? "",
-            events: [],
-            score: scoreByUser.get(ev.user_id) ?? 0,
-          };
-          byUser.set(ev.user_id, bundle);
-        }
-
-        if (!bundle.email && ev.email) bundle.email = ev.email;
-        bundle.events.push(ev);
+        const list = eventsByUser.get(ev.user_id) ?? [];
+        list.push(ev);
+        eventsByUser.set(ev.user_id, list);
       }
 
-      const productName = ws.product_name ?? ws.name;
-      const appUrl = appUrlFor(ws);
-      const pricingUrl = pricingUrlFor(ws);
-      const keyFeature = ws.key_feature_name ?? "the key feature";
+      for (const row of (stageRows ?? []) as StageRow[]) {
+        const userEvents = eventsByUser.get(row.user_id) ?? [];
+        const email = resolveEmail(userEvents);
+        if (!email || email.includes("@anon.")) continue;
 
-      for (const user of Array.from(byUser.values())) {
-        if (!user.email || user.email.includes("@anon.")) continue;
-        if (stageByUser.get(user.user_id) === "paid") continue;
+        const user: UserContext = {
+          user_id: row.user_id,
+          email,
+          stage: row.stage,
+          events: userEvents,
+          score: scoreByUser.get(row.user_id) ?? 0,
+        };
 
-        const displayName = user.email.split("@")[0] || user.email;
-        const evts = user.events;
+        const plan = planStageEmail(user, ws);
+        if (!plan) continue;
 
-        const hasSignup = evts.some((e) => isSignupEvent(e.event_type));
-        const lastEventMs = evts.length
-          ? Math.max(...evts.map((e) => new Date(e.occurred_at).getTime()))
-          : 0;
-
-        const featureUsedIn5d = evts.some(
-          (e) =>
-            isFeatureUsed(e.event_type) &&
-            new Date(e.occurred_at).getTime() >= msAgo(5)
-        );
-
-        const pageViews7d = evts.filter(
-          (e) =>
-            isPageView(e.event_type) &&
-            new Date(e.occurred_at).getTime() >= msAgo(7)
-        ).length;
-
-        const pricingPageView24h = evts.some(
-          (e) =>
-            isPageView(e.event_type) &&
-            (e.page?.toLowerCase().includes("pricing") ?? false) &&
-            new Date(e.occurred_at).getTime() >= now - 24 * 60 * 60 * 1000
-        );
-
-        // ── Welcome: signup event, never sent before ─────────────────────
+        const cooldown = COOLDOWN_HOURS[plan.trigger];
         if (
-          hasSignup &&
-          !(await wasEmailSentRecently(ws.id, user.user_id, "welcome", null))
-        ) {
-          await trySend(
-            {
-              workspace: ws,
-              user,
-              trigger: "welcome",
-              subject: `Welcome to ${productName}`,
-              react: React.createElement(WelcomeEmail, {
-                userName: displayName,
-                appUrl,
-                productName,
-              }),
-            },
-            result
-          );
-        }
-
-        // ── Feature nudge: no feature_used in 5d, no nudge in 5d ─────────
-        if (
-          !featureUsedIn5d &&
-          !(await wasEmailSentRecently(
+          await wasEmailSentRecently(
             ws.id,
             user.user_id,
-            "feature_nudge",
-            HOURS(5)
-          ))
+            plan.trigger,
+            cooldown
+          )
         ) {
-          await trySend(
-            {
-              workspace: ws,
-              user,
-              trigger: "feature_nudge",
-              subject: `Try ${keyFeature} in ${productName}`,
-              react: React.createElement(FeatureNudgeEmail, {
-                userName: displayName,
-                keyFeatureName: keyFeature,
-                appUrl,
-                productName,
-              }),
-            },
-            result
+          continue;
+        }
+
+        const ok = await sendEmail({
+          to: user.email,
+          subject: plan.subject,
+          react: plan.react,
+          trigger: plan.trigger,
+          workspaceId: ws.id,
+          userId: user.user_id,
+          replyTo: ws.reply_to_email,
+          metadata: {
+            recipient_email: user.email,
+            stage: user.stage,
+          },
+        });
+
+        if (ok) {
+          result.sent++;
+        } else {
+          result.errors.push(
+            `${ws.id}/${user.user_id}/${plan.trigger}`
           );
         }
 
-        // ── Value demo: 3+ page views in 7d, no value demo in 7d ──────────
-        if (
-          pageViews7d >= 3 &&
-          !(await wasEmailSentRecently(
-            ws.id,
-            user.user_id,
-            "value_demo",
-            HOURS(7)
-          ))
-        ) {
-          await trySend(
-            {
-              workspace: ws,
-              user,
-              trigger: "value_demo",
-              subject: `You're exploring ${productName} — nice work`,
-              react: React.createElement(ValueDemoEmail, {
-                userName: displayName,
-                appUrl,
-                productName,
-              }),
-            },
-            result
-          );
-        }
-
-        // ── Check-in: no events in 10d, no check-in in 10d ───────────────
-        if (
-          lastEventMs > 0 &&
-          lastEventMs < msAgo(10) &&
-          !(await wasEmailSentRecently(
-            ws.id,
-            user.user_id,
-            "check_in",
-            HOURS(10)
-          ))
-        ) {
-          await trySend(
-            {
-              workspace: ws,
-              user,
-              trigger: "check_in",
-              subject: `Checking in on your ${productName} account`,
-              react: React.createElement(CheckInEmail, {
-                userName: displayName,
-                appUrl,
-                productName,
-              }),
-            },
-            result
-          );
-        }
-
-        // ── Upgrade offer: score > 70, no offer in 7d ────────────────────
-        if (
-          user.score > 70 &&
-          !(await wasEmailSentRecently(
-            ws.id,
-            user.user_id,
-            "upgrade_offer",
-            HOURS(7)
-          ))
-        ) {
-          await trySend(
-            {
-              workspace: ws,
-              user,
-              trigger: "upgrade_offer",
-              subject: `You're ready to upgrade ${productName}`,
-              react: React.createElement(UpgradeOfferEmail, {
-                userName: displayName,
-                score: user.score,
-                checkoutUrl: pricingUrl,
-                appUrl,
-                productName,
-              }),
-            },
-            result
-          );
-        }
-
-        // ── Urgency: pricing page_view in 24h, no urgency in 24h ─────────
-        if (
-          pricingPageView24h &&
-          !(await wasEmailSentRecently(
-            ws.id,
-            user.user_id,
-            "urgency",
-            24
-          ))
-        ) {
-          await trySend(
-            {
-              workspace: ws,
-              user,
-              trigger: "urgency",
-              subject: `Questions about ${productName} pricing?`,
-              react: React.createElement(UrgencyEmail, {
-                userName: displayName,
-                pricingUrl,
-                productName,
-              }),
-            },
-            result
-          );
-        }
-
-        // ── Churn prevention: no events in 25d, no churn email in 25d ────
-        if (
-          lastEventMs > 0 &&
-          lastEventMs < msAgo(25) &&
-          !(await wasEmailSentRecently(
-            ws.id,
-            user.user_id,
-            "churn_prevention",
-            HOURS(25)
-          ))
-        ) {
-          await trySend(
-            {
-              workspace: ws,
-              user,
-              trigger: "churn_prevention",
-              subject: `We'd love to see you back on ${productName}`,
-              react: React.createElement(ChurnPreventionEmail, {
-                userName: displayName,
-                appUrl,
-                productName,
-              }),
-            },
-            result
-          );
-        }
+        // At most one email per user per nightly run.
       }
     } catch (err) {
       result.errors.push(`workspace:${ws.id} – ${String(err)}`);
