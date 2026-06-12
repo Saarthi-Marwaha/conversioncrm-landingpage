@@ -4,6 +4,8 @@ import { getActiveWorkspace } from "@/lib/active-workspace";
 import { CopyButton } from "@/components/CopyButton";
 import { WebsiteUrlForm } from "@/components/WebsiteUrlForm";
 import { ReplyToEmailForm } from "@/components/ReplyToEmailForm";
+import { EmailDeliveryForm } from "@/components/EmailDeliveryForm";
+import { AhaMomentForm } from "@/components/AhaMomentForm";
 
 export default async function SettingsPage() {
   const { workspace, userEmail } = await getActiveWorkspace();
@@ -81,6 +83,14 @@ For each one, add a track call right where the action happens:
   ConversionCRM.track("upgrade_clicked");
   ConversionCRM.track("pricing_page_visit");
 
+When a user exhausts a free allowance (trial ended, weekly/monthly quota used up),
+fire this once at the moment the limit is hit — NOT on every locked-feature click:
+
+  ConversionCRM.track("usage_limit_hit", {
+    limit_type: "monthly",  // trial | weekly | monthly | quota
+    exhausted: true,
+  });
+
 Use a short snake_case string that describes the action as the first argument.
 The second argument (properties object) is optional.
 
@@ -91,7 +101,7 @@ user and event should appear within 3 seconds.`;
 
 
   return (
-    <div className="space-y-8 max-w-2xl">
+    <div className="space-y-6 sm:space-y-8 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-gray-500 text-sm mt-1">
@@ -100,7 +110,7 @@ user and event should appear within 3 seconds.`;
       </div>
 
       {/* ── Embed Snippet ─────────────────────────────── */}
-      <section className="bg-white rounded-xl border border-indigo-100 p-6 space-y-4">
+      <section className="card p-5 sm:p-6 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-gray-900">
@@ -146,7 +156,7 @@ user and event should appear within 3 seconds.`;
           </pre>
         </div>
 
-        <div className="flex items-start gap-2 bg-violet-50 border border-violet-100 rounded-lg px-4 py-3 text-xs text-violet-700">
+        <div className="flex items-start gap-2 bg-sky-50 rounded-lg px-4 py-3 text-xs text-sky-700">
           <span className="text-base leading-none mt-0.5">🤖</span>
           <span>
             <strong>Using Cursor or another AI agent?</strong> Click{" "}
@@ -157,7 +167,7 @@ user and event should appear within 3 seconds.`;
           </span>
         </div>
 
-        <div className="bg-indigo-50 rounded-lg px-4 py-3 text-xs text-indigo-700 leading-relaxed">
+        <div className="bg-sky-50 rounded-lg px-4 py-3 text-xs text-sky-700 leading-relaxed">
           <strong>Auto-tracked:</strong> every page visit (including SPA routes),
           time on each page, and button/link clicks — no extra code beyond the
           script tag. The auth block above links events to a real user and email.
@@ -165,7 +175,7 @@ user and event should appear within 3 seconds.`;
       </section>
 
       {/* ── Reply-to email ─────────────────────────────── */}
-      <section className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
+      <section className="card p-5 sm:p-6 space-y-4">
         <div>
           <h2 className="text-base font-semibold text-gray-900">Email replies</h2>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -178,11 +188,53 @@ user and event should appear within 3 seconds.`;
             Set your Gmail to enable welcome, nudge, and lifecycle emails.
           </div>
         )}
-        <ReplyToEmailForm currentEmail={workspace.reply_to_email} />
+        <ReplyToEmailForm
+          currentEmail={workspace.reply_to_email}
+          currentSenderName={workspace.email_sender_name}
+        />
+      </section>
+
+      {/* ── Email delivery (SMTP / Resend) ─────────────── */}
+      <section className="card p-5 sm:p-6 space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">
+            Email delivery
+          </h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Choose how automated and composed emails are sent. Use your own
+            SMTP server to send from your domain.
+          </p>
+        </div>
+        <EmailDeliveryForm
+          currentProvider={workspace.email_provider === "smtp" ? "smtp" : "resend"}
+          smtpHost={workspace.smtp_host}
+          smtpPort={workspace.smtp_port}
+          smtpUser={workspace.smtp_user}
+          smtpSecure={workspace.smtp_secure ?? true}
+          smtpFromEmail={workspace.smtp_from_email}
+          hasPassword={!!workspace.smtp_pass}
+        />
+      </section>
+
+      {/* ── Aha moment ─────────────────────────────────── */}
+      <section className="card p-5 sm:p-6 space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">
+            Aha moment (key feature)
+          </h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            The action that proves a user got value. It powers 20 points of the
+            engagement score and decides who still needs the onboarding nudge.
+          </p>
+        </div>
+        <AhaMomentForm
+          currentName={workspace.key_feature_name}
+          currentEvent={workspace.key_feature_event}
+        />
       </section>
 
       {/* ── Website URL ────────────────────────────────── */}
-      <section className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
+      <section className="card p-5 sm:p-6 space-y-4">
         <div>
           <h2 className="text-base font-semibold text-gray-900">Your website</h2>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -209,14 +261,14 @@ user and event should appear within 3 seconds.`;
       </section>
 
       {/* ── API Key ────────────────────────────────────── */}
-      <section className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
+      <section className="card p-5 sm:p-6 space-y-4">
         <h2 className="text-base font-semibold text-gray-900">API Key</h2>
         <div>
           <p className="text-xs text-gray-500 mb-2">
             Your widget is authenticated by this key. Keep it secret.
           </p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 text-sm text-indigo-700 bg-indigo-50 px-3 py-2.5 rounded-lg border border-indigo-100 font-mono break-all">
+            <code className="flex-1 text-sm text-sky-700 bg-sky-50 px-3 py-2.5 rounded-lg font-mono break-all">
               {workspace.api_key}
             </code>
             <CopyButton text={workspace.api_key} label="Copy" compact />
@@ -225,7 +277,7 @@ user and event should appear within 3 seconds.`;
       </section>
 
       {/* ── Workspace Info ─────────────────────────────── */}
-      <section className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
+      <section className="card p-5 sm:p-6 space-y-4">
         <h2 className="text-base font-semibold text-gray-900">Workspace</h2>
         <dl className="space-y-3">
           <div className="flex justify-between text-sm">

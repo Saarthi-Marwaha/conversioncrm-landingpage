@@ -22,6 +22,7 @@ export type RunScoringResult = {
 type WorkspaceRow = {
   id: string;
   key_feature_name: string | null;
+  key_feature_event: string | null;
 };
 
 type EventRow = {
@@ -38,7 +39,7 @@ export async function runScoring(): Promise<RunScoringResult> {
 
   const { data: workspaces, error: wsError } = await supabase
     .from("workspaces")
-    .select("id, key_feature_name");
+    .select("id, key_feature_name, key_feature_event");
 
   if (wsError) {
     throw new Error(`Failed to fetch workspaces: ${wsError.message}`);
@@ -82,7 +83,8 @@ export async function runScoring(): Promise<RunScoringResult> {
       try {
         const { score, breakdown } = computeWeeklyEngagementScore(
           userEvents,
-          workspace.key_feature_name
+          workspace.key_feature_name,
+          workspace.key_feature_event
         );
 
         const { error: upsertError } = await supabase

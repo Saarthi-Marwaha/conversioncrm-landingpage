@@ -13,10 +13,12 @@ export default async function DashboardLayout({
   if (!workspace) redirect("/login");
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="min-h-screen lg:flex lg:h-screen bg-[#f4f8fc]">
       <DashboardSidebar workspace={workspace} userEmail={userEmail} />
-      <main className="flex-1 overflow-auto">
-        <div className="max-w-7xl mx-auto px-6 py-8">{children}</div>
+      <main className="flex-1 lg:overflow-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+          {children}
+        </div>
       </main>
     </div>
   );

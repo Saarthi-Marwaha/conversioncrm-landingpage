@@ -9,7 +9,7 @@ const STAGE_CONFIG: Record<
   onboarding: { label: "Onboarding", color: "text-yellow-700", bg: "bg-yellow-100" },
   active: { label: "Active", color: "text-green-700", bg: "bg-green-100" },
   going_quiet: { label: "Going Quiet", color: "text-orange-700", bg: "bg-orange-100" },
-  conversion_ready: { label: "Conversion Ready", color: "text-indigo-700", bg: "bg-indigo-100" },
+  conversion_ready: { label: "Conversion Ready", color: "text-sky-700", bg: "bg-sky-100" },
   paid: { label: "Paid", color: "text-emerald-700", bg: "bg-emerald-100" },
   churned: { label: "Churned", color: "text-red-700", bg: "bg-red-100" },
 };

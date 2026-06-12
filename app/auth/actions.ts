@@ -87,6 +87,8 @@ export async function createWorkspace(formData: FormData) {
   const productName = (formData.get("product_name") as string)?.trim();
   const keyFeatureName = (formData.get("key_feature_name") as string)?.trim();
   const replyToEmail = (formData.get("reply_to_email") as string)?.trim();
+  const emailSenderName =
+    (formData.get("email_sender_name") as string)?.trim() || productName;
 
   if (!companyName || !productName || !keyFeatureName || !replyToEmail) {
     redirect("/onboarding?error=All+fields+are+required");
@@ -127,6 +129,7 @@ export async function createWorkspace(formData: FormData) {
     api_key: apiKey,
     key_feature_name: keyFeatureName,
     reply_to_email: replyToEmail,
+    email_sender_name: emailSenderName,
     trial_length_days: 14,
   });
 

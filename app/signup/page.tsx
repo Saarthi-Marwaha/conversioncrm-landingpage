@@ -9,11 +9,11 @@ export default function SignupPage({ searchParams }: Props) {
   const error = searchParams.error;
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center px-4">
+    <main className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-purple-50 flex items-center justify-center px-4">
       <div className="bg-white w-full max-w-md p-8 rounded-2xl border border-gray-100 shadow-sm">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 mb-8">
-          <div className="bg-indigo-600 text-white p-1.5 rounded-lg">
+          <div className="bg-sky-600 text-white p-1.5 rounded-lg">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
@@ -44,7 +44,7 @@ export default function SignupPage({ searchParams }: Props) {
               required
               autoComplete="email"
               placeholder="you@company.com"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
             />
           </div>
 
@@ -60,13 +60,13 @@ export default function SignupPage({ searchParams }: Props) {
               autoComplete="new-password"
               minLength={8}
               placeholder="Min. 8 characters"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm"
+            className="w-full bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm"
           >
             Create account
           </button>
@@ -80,7 +80,7 @@ export default function SignupPage({ searchParams }: Props) {
 
         <p className="mt-6 text-center text-sm text-gray-500">
           Already have an account?{" "}
-          <Link href="/login" className="text-indigo-600 font-medium hover:underline">
+          <Link href="/login" className="text-sky-600 font-medium hover:underline">
             Sign in
           </Link>
         </p>

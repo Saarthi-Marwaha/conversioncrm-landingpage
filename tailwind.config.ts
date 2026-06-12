@@ -57,6 +57,12 @@ const config: Config = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      boxShadow: {
+        card: "0 1px 2px rgba(13, 42, 80, 0.05), 0 10px 30px -16px rgba(13, 42, 80, 0.16)",
+        "card-lg":
+          "0 2px 4px rgba(13, 42, 80, 0.05), 0 18px 44px -18px rgba(13, 42, 80, 0.22)",
+        soft: "0 1px 2px rgba(13, 42, 80, 0.06)",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },

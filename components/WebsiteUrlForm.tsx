@@ -69,12 +69,12 @@ export function WebsiteUrlForm({ currentUrl, apiKey, eventsEndpoint }: Props) {
           name="website_url"
           defaultValue={currentUrl ?? ""}
           placeholder="https://www.yourproduct.com"
-          className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="flex-1 text-sm bg-gray-50 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-300 focus:bg-white transition-colors"
         />
         <button
           type="submit"
           disabled={isPending}
-          className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          className="px-4 py-2 text-sm font-medium bg-sky-600 text-white rounded-lg hover:bg-sky-700 disabled:opacity-50 transition-colors"
         >
           {isPending ? "Saving…" : saved ? "Saved ✓" : "Save"}
         </button>
@@ -90,7 +90,7 @@ export function WebsiteUrlForm({ currentUrl, apiKey, eventsEndpoint }: Props) {
       </p>
 
       {/* Test connection */}
-      <div className="border-t border-gray-100 pt-4 space-y-2">
+      <div className="pt-4 space-y-2">
         <p className="text-xs font-medium text-gray-700">
           Test connection from this browser
         </p>
@@ -101,7 +101,7 @@ export function WebsiteUrlForm({ currentUrl, apiKey, eventsEndpoint }: Props) {
         <button
           onClick={sendTestEvent}
           disabled={testing}
-          className="px-4 py-2 text-sm font-medium border border-indigo-200 text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 disabled:opacity-50 transition-colors"
+          className="px-4 py-2 text-sm font-medium text-sky-700 bg-sky-50 rounded-lg hover:bg-sky-100 disabled:opacity-50 transition-colors"
         >
           {testing ? "Sending…" : "Send test event"}
         </button>

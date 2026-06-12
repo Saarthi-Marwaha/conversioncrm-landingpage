@@ -7,7 +7,7 @@ const STAGE_BADGE: Record<LifecycleStage, { label: string; class: string }> = {
   onboarding: { label: "Onboarding", class: "bg-yellow-100 text-yellow-700" },
   active: { label: "Active", class: "bg-green-100 text-green-700" },
   going_quiet: { label: "Going Quiet", class: "bg-orange-100 text-orange-700" },
-  conversion_ready: { label: "Ready", class: "bg-indigo-100 text-indigo-700" },
+  conversion_ready: { label: "Ready", class: "bg-sky-100 text-sky-700" },
   paid: { label: "Paid", class: "bg-emerald-100 text-emerald-700" },
   churned: { label: "Churned", class: "bg-red-100 text-red-700" },
 };
@@ -79,7 +79,7 @@ export function UserTable({ users }: Props) {
                     <div className="flex items-center gap-2">
                       <div className="w-16 bg-gray-100 rounded-full h-1.5">
                         <div
-                          className="bg-indigo-500 h-1.5 rounded-full"
+                          className="bg-sky-500 h-1.5 rounded-full"
                           style={{ width: `${user.engagement_score}%` }}
                         />
                       </div>

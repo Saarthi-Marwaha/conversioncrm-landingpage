@@ -26,7 +26,9 @@ type WorkspaceRow = {
   product_name: string | null;
   website_url: string | null;
   key_feature_name: string | null;
+  key_feature_event: string | null;
   reply_to_email: string | null;
+  email_sender_name: string | null;
 };
 
 type EventRow = {
@@ -52,7 +54,9 @@ const COOLDOWN_HOURS: Record<EmailTrigger, number | null> = {
   upgrade_offer: 7 * 24,
   urgency: 24,
   churn_prevention: 25 * 24,
+  limit_upgrade: 7 * 24,
   daily_summary: 24,
+  custom: 0,
 };
 
 function isPageView(type: string): boolean {
@@ -142,9 +146,11 @@ export function planStageEmail(
       };
 
     case "onboarding": {
+      const ahaEvent = ws.key_feature_event?.trim().toLowerCase() || null;
       const featureUsedIn5d = evts.some(
         (e) =>
-          isFeatureUsed(e.event_type) &&
+          (isFeatureUsed(e.event_type) ||
+            (ahaEvent !== null && e.event_type.toLowerCase() === ahaEvent)) &&
           new Date(e.occurred_at).getTime() >= msAgo(5)
       );
       if (featureUsedIn5d) return null;
@@ -319,6 +325,7 @@ async function processWorkspaceEmails(
       workspaceId: ws.id,
       userId: user.user_id,
       replyTo: ws.reply_to_email,
+      workspace: ws,
       metadata: {
         recipient_email: user.email,
         stage: user.stage,
@@ -342,7 +349,7 @@ export async function runAutomatedEmailsForWorkspace(
   const { data: ws, error } = await supabase
     .from("workspaces")
     .select(
-      "id, name, product_name, website_url, key_feature_name, reply_to_email, emails_last_run_at"
+      "id, name, product_name, website_url, key_feature_name, key_feature_event, reply_to_email, email_sender_name, emails_last_run_at"
     )
     .eq("id", workspaceId)
     .single();
@@ -384,7 +391,7 @@ export async function runAutomatedEmails(): Promise<RunAutomatedEmailsResult> {
   const { data: workspaces, error: wsError } = await supabase
     .from("workspaces")
     .select(
-      "id, name, product_name, website_url, key_feature_name, reply_to_email"
+      "id, name, product_name, website_url, key_feature_name, key_feature_event, reply_to_email, email_sender_name"
     )
     .not("reply_to_email", "is", null);
 

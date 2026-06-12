@@ -18,10 +18,12 @@ export function generateApiKey(): string {
  * Validates that the CRON_SECRET header matches the expected secret.
  */
 export function validateCronSecret(request: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  // No secret configured = cron endpoints are closed (never accept
+  // "Bearer undefined").
+  if (!secret) return false;
   const authHeader = request.headers.get("authorization");
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-  if (!authHeader || authHeader !== expected) return false;
-  return true;
+  return authHeader === `Bearer ${secret}`;
 }
 
 /**

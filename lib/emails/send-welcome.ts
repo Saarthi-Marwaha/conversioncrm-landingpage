@@ -34,7 +34,7 @@ export async function maybeSendWelcomeOnSignup(
   const supabase = createSupabaseAdminClient();
   const { data: ws } = await supabase
     .from("workspaces")
-    .select("id, name, product_name, website_url, reply_to_email")
+    .select("id, name, product_name, website_url, reply_to_email, email_sender_name")
     .eq("id", workspaceId)
     .single();
 
@@ -59,6 +59,7 @@ export async function maybeSendWelcomeOnSignup(
     workspaceId,
     userId,
     replyTo: ws.reply_to_email,
+    workspace: ws,
     metadata: {
       recipient_email: trimmed,
       stage: "signup",

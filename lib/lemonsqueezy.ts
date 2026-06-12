@@ -91,8 +91,12 @@ export function verifyWebhookSignature(
     .update(rawBody)
     .digest("hex");
 
-  return crypto.timingSafeEqual(
-    Buffer.from(digest, "hex"),
-    Buffer.from(signature, "hex")
-  );
+  // timingSafeEqual throws on length mismatch — treat that as a bad
+  // signature rather than letting a malformed header bubble up as a 500.
+  const digestBuf = Buffer.from(digest, "hex");
+  const signatureBuf = Buffer.from(signature, "hex");
+  if (digestBuf.length !== signatureBuf.length || signatureBuf.length === 0) {
+    return false;
+  }
+  return crypto.timingSafeEqual(digestBuf, signatureBuf);
 }

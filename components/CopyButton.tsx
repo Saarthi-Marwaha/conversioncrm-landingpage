@@ -31,13 +31,13 @@ export function CopyButton({
     <button
       onClick={handleCopy}
       className={cn(
-        "flex items-center gap-1.5 font-medium transition-all rounded-lg border text-sm flex-shrink-0",
+        "flex items-center gap-1.5 font-medium transition-all rounded-lg text-sm flex-shrink-0",
         compact ? "px-3 py-2" : "px-4 py-2",
         copied
-          ? "bg-green-50 border-green-200 text-green-700"
+          ? "bg-green-50 text-green-700"
           : isAgent
-          ? "bg-violet-600 border-violet-600 text-white hover:bg-violet-700 hover:border-violet-700 shadow-sm"
-          : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+          ? "bg-sky-600 text-white hover:bg-sky-700 shadow-sm"
+          : "bg-white shadow-soft text-gray-600 hover:bg-gray-50 hover:text-gray-900"
       )}
     >
       {copied ? (

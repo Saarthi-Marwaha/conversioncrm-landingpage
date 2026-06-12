@@ -2,9 +2,9 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex flex-col items-center justify-center px-4">
+    <main className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-purple-50 flex flex-col items-center justify-center px-4">
       <div className="max-w-2xl text-center">
-        <div className="inline-flex items-center gap-2 bg-indigo-100 text-indigo-700 text-sm font-medium px-3 py-1 rounded-full mb-6">
+        <div className="inline-flex items-center gap-2 bg-sky-100 text-sky-700 text-sm font-medium px-3 py-1 rounded-full mb-6">
           MVP Foundation
         </div>
 
@@ -19,7 +19,7 @@ export default function HomePage() {
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Link
             href="/dashboard"
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
+            className="bg-sky-600 hover:bg-sky-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
           >
             Open Dashboard
           </Link>

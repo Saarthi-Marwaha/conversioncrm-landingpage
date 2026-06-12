@@ -18,6 +18,7 @@ import {
 import type { EmailTrigger } from "@/types";
 import {
   computeWeeklyEngagementScore,
+  emptyScoreBreakdown,
   type ScoringEvent,
   type WeeklyScoreBreakdown,
 } from "@/lib/scoring";
@@ -155,9 +156,13 @@ export async function GET(request: NextRequest) {
     .order("occurred_at", { ascending: false })
     .limit(3000);
 
+  // Only apply the origin filter when it can't smuggle extra PostgREST
+  // operators into the .or() expression (commas/parens are separators).
   const siteOrigin = toOrigin(workspace.website_url);
-  if (siteOrigin) {
-    query = query.or(`origin.eq.${siteOrigin},origin.is.null`);
+  const safeOrigin =
+    siteOrigin && /^[a-zA-Z0-9.\-:/]+$/.test(siteOrigin) ? siteOrigin : null;
+  if (safeOrigin) {
+    query = query.or(`origin.eq.${safeOrigin},origin.is.null`);
   }
 
   const { data, error } = await query;
@@ -198,14 +203,7 @@ export async function GET(request: NextRequest) {
         stage: "signup",
         emails_sent: emptyEmailsSent(),
         engagement_score: 0,
-        score_breakdown: {
-          seen_this_week: 0,
-          key_feature_used: 0,
-          time_spent: 0,
-          pricing_page: 0,
-          total_seconds: 0,
-          total: 0,
-        },
+        score_breakdown: emptyScoreBreakdown(),
         events: 0,
         first_seen: ev.occurred_at,
         last_seen: ev.occurred_at,
@@ -312,7 +310,8 @@ export async function GET(request: NextRequest) {
     const scoringEvts = scoringEventsByUser.get(uid) ?? [];
     const { score, breakdown } = computeWeeklyEngagementScore(
       scoringEvts,
-      workspace.key_feature_name
+      workspace.key_feature_name,
+      workspace.key_feature_event
     );
     user.engagement_score = score;
     user.score_breakdown = breakdown;
@@ -339,7 +338,10 @@ export async function GET(request: NextRequest) {
   }
 
   // Persist scores + stages so Supabase stays in sync with the dashboard.
-  if (users.length > 0) {
+  // Only the canonical 7-day score is persisted — otherwise switching the
+  // dashboard to "today" would overwrite the weekly scores that drive stage
+  // assignment and automated emails with much lower numbers.
+  if (users.length > 0 && range === "7d") {
     const computedAt = new Date().toISOString();
     const { error: syncError } = await admin.from("engagement_scores").upsert(
       users.map((u) => ({
@@ -438,7 +440,7 @@ export async function GET(request: NextRequest) {
       reply_to_configured: !!workspace.reply_to_email,
     },
     range,
-    filtered: !!siteOrigin,
+    filtered: !!safeOrigin,
     emailBatch,
     users,
     totals: {

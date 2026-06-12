@@ -27,7 +27,7 @@ $keys = @(
 
 $defaults = @{
   "BYPASS_AUTH" = "true"
-  "RESEND_FROM_EMAIL" = "noreply@mail.conversioncrm.com"
+  "RESEND_FROM_EMAIL" = "noreply@mail.conversioncrm.co"
   "RESEND_FROM_NAME" = "ConversionCRM"
 }
 

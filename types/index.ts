@@ -20,6 +20,7 @@ export type EventType =
   | "file_uploaded"
   | "task_completed"
   | "upgrade_clicked"
+  | "usage_limit_hit"
   | "custom";
 
 export type EmailTrigger =
@@ -30,7 +31,9 @@ export type EmailTrigger =
   | "upgrade_offer"
   | "urgency"
   | "churn_prevention"
-  | "daily_summary";
+  | "limit_upgrade"
+  | "daily_summary"
+  | "custom";
 
 export type SubscriptionStatus =
   | "trialing"
@@ -43,6 +46,8 @@ export type SubscriptionStatus =
 // Database row shapes (mirrors Supabase schema)
 // ─────────────────────────────────────────────
 
+export type EmailProvider = "resend" | "smtp";
+
 export interface Workspace {
   id: string;
   name: string;
@@ -51,10 +56,18 @@ export interface Workspace {
   product_name: string | null;
   website_url: string | null;
   reply_to_email: string | null;
+  email_sender_name: string | null;
   emails_last_run_at: string | null;
   key_feature_name: string | null;
   key_feature_event: string | null;
   trial_length_days: number;
+  email_provider: EmailProvider | null;
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_user: string | null;
+  smtp_pass: string | null;
+  smtp_secure: boolean | null;
+  smtp_from_email: string | null;
   created_at: string;
   updated_at: string;
 }

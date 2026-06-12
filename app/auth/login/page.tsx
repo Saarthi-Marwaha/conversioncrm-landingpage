@@ -34,9 +34,9 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center px-4">
+    <main className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-purple-50 flex items-center justify-center px-4">
       <div className="bg-white w-full max-w-md p-8 rounded-2xl border border-gray-100 shadow-sm">
-        <Link href="/" className="text-indigo-600 font-semibold text-lg mb-6 block">
+        <Link href="/" className="text-sky-600 font-semibold text-lg mb-6 block">
           ConversionCRM
         </Link>
 
@@ -67,7 +67,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@yourcompany.com"
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
               </div>
 
@@ -78,7 +78,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors"
+                className="w-full bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors"
               >
                 {loading ? "Sending…" : "Send magic link"}
               </button>

@@ -39,6 +39,12 @@ export const STAGE_EMAIL_COLUMNS: {
     trigger: "churn_prevention",
     emailLabel: "Win-back",
   },
+  {
+    stage: "active",
+    stageLabel: "Limit",
+    trigger: "limit_upgrade",
+    emailLabel: "Limit",
+  },
 ];
 
 export type UserEmailsSent = Record<EmailTrigger, boolean>;
@@ -51,6 +57,7 @@ export const AUTOMATED_TRIGGERS: EmailTrigger[] = [
   "upgrade_offer",
   "urgency",
   "churn_prevention",
+  "limit_upgrade",
 ];
 
 export function emptyEmailsSent(): UserEmailsSent {
@@ -62,6 +69,8 @@ export function emptyEmailsSent(): UserEmailsSent {
     upgrade_offer: false,
     urgency: false,
     churn_prevention: false,
+    limit_upgrade: false,
     daily_summary: false,
+    custom: false,
   };
 }

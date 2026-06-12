@@ -76,6 +76,11 @@ export async function GET(request: NextRequest) {
         workspaceId: ws.id,
         userId: "__workspace_owner__",
         replyTo: ws.reply_to_email ?? ownerEmail,
+        workspace: {
+          email_sender_name: ws.email_sender_name,
+          product_name: ws.product_name,
+          name: ws.name,
+        },
         metadata: { recipient_type: "workspace_owner" },
       });
 

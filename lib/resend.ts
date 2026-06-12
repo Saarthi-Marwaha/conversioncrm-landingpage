@@ -16,4 +16,16 @@ export function getResend(): Resend {
   return _resend;
 }
 
-export const EMAIL_FROM = `${process.env.RESEND_FROM_NAME ?? "ConversionCRM"} <${process.env.RESEND_FROM_EMAIL ?? "noreply@mail.conversioncrm.com"}>`;
+export const DEFAULT_FROM_EMAIL =
+  process.env.RESEND_FROM_EMAIL ?? "noreply@mail.conversioncrm.co";
+
+export const DEFAULT_FROM_NAME =
+  process.env.RESEND_FROM_NAME ?? "ConversionCRM";
+
+/** Platform default From (daily summary fallback when workspace has no sender name). */
+export const EMAIL_FROM = formatEmailFrom(DEFAULT_FROM_NAME);
+
+export function formatEmailFrom(displayName: string): string {
+  const name = displayName.trim() || DEFAULT_FROM_NAME;
+  return `${name} <${DEFAULT_FROM_EMAIL}>`;
+}
