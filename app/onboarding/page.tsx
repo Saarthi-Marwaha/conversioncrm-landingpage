@@ -16,15 +16,15 @@ export default async function OnboardingPage({ searchParams }: Props) {
 
   if (!user) redirect("/login");
 
-  // Already onboarded — skip to settings
+  // Already onboarded — route by plan: chosen → dashboard, not yet → pricing.
   const admin = createSupabaseAdminClient();
   const { data: existing } = await admin
     .from("workspaces")
-    .select("id")
+    .select("id, plan")
     .eq("owner_id", user.id)
     .maybeSingle();
 
-  if (existing) redirect("/dashboard/settings");
+  if (existing) redirect(existing.plan ? "/dashboard" : "/pricing");
 
   return (
     <main className="min-h-screen bg-[#f4f8fc] flex flex-col items-center px-4 py-10">

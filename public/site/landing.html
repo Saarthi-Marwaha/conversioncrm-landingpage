@@ -64,7 +64,7 @@
       <a href="/#faqs">FAQs</a>
     </div>
     <div class="nav-cta">
-      <a class="btn btn-gray btn-sm" href="/signup">Sign in</a>
+      <a class="btn btn-gray btn-sm" href="/login">Sign in</a>
       <a class="btn btn-blue btn-sm" href="/signup">Try Beta</a>
       <button class="burger" id="burger" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
     </div>
@@ -91,7 +91,7 @@
     <a class="mm-sub" href="/compare/userflow">vs Userflow</a>
     <a class="mm-sub" href="/compare"><b>All comparisons →</b></a>
     <div class="mm-cta">
-      <a class="btn btn-gray" href="/signup">Sign in</a>
+      <a class="btn btn-gray" href="/login">Sign in</a>
       <a class="btn btn-blue" href="/signup">Try Beta</a>
     </div>
   </div>
@@ -332,21 +332,69 @@ ccrm.track(<span class="c-str">"sign_up"</span>)</div>
   <div class="container">
     <div class="sec-head center reveal">
       <span class="kicker">Pricing</span>
-      <h2>Free while we're in beta</h2>
+      <h2>Plans that scale with your sends</h2>
+      <p>Start free with 1,000 emails a month — upgrade only when the emails start converting. Drag the volume slider on the full pricing page to price any size.</p>
     </div>
-    <div class="price-card reveal">
-      <span class="price-flag">Beta access</span>
-      <div class="price-num">$0<span> / during beta</span></div>
-      <ul class="price-feats">
-        <li><span class="tick">✓</span>Full tracking, scoring &amp; lifecycle stages</li>
-        <li><span class="tick">✓</span>All 8 automated emails + composer</li>
-        <li><span class="tick">✓</span>Send via Resend or your own SMTP</li>
-        <li><span class="tick">✓</span>Live dashboard &amp; daily summary email</li>
-        <li><span class="tick">✓</span>Locked-in founder pricing when plans launch</li>
-      </ul>
-      <a class="btn btn-blue btn-lg" style="width:100%" href="/signup">Try Beta</a>
-      <p class="price-note">No credit card. Install, watch your dashboard fill up, decide later. See the <a href="/legal/payment-policy" style="color:var(--blue-deep)">payment policy</a> and <a href="/legal/beta-notice" style="color:var(--blue-deep)">beta notice</a>.</p>
+    <div class="reveal" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-top:6px">
+
+      <!-- Free -->
+      <div style="background:#fff;border:1px solid #e6eef6;border-radius:14px;padding:22px;display:flex;flex-direction:column">
+        <div style="font-weight:700;color:var(--blue-deep)">Free</div>
+        <div class="price-num" style="font-size:30px;margin:6px 0">$0<span> / mo</span></div>
+        <div style="font-size:13px;color:#2b6cb0;font-weight:600">1,000 emails / month</div>
+        <ul class="price-feats" style="margin-top:12px">
+          <li><span class="tick">✓</span>Live dashboard &amp; 6-layer scoring</li>
+          <li><span class="tick">✓</span>Lifecycle stages</li>
+          <li><span class="tick">✓</span>7-day event history</li>
+        </ul>
+        <a class="btn btn-gray btn-lg" style="width:100%;margin-top:auto" href="/signup">Start free</a>
+      </div>
+
+      <!-- Basic -->
+      <div style="background:#fff;border:1px solid #e6eef6;border-radius:14px;padding:22px;display:flex;flex-direction:column">
+        <div style="font-weight:700;color:var(--blue-deep)">Basic</div>
+        <div class="price-num" style="font-size:30px;margin:6px 0">$20<span> / mo</span></div>
+        <div style="font-size:13px;color:#2b6cb0;font-weight:600">20,000 emails / month</div>
+        <ul class="price-feats" style="margin-top:12px">
+          <li><span class="tick">✓</span>Everything in Free</li>
+          <li><span class="tick">✓</span>Automated lifecycle emails</li>
+          <li><span class="tick">✓</span>Hand-written composer</li>
+        </ul>
+        <a class="btn btn-gray btn-lg" style="width:100%;margin-top:auto" href="/signup">Get started</a>
+      </div>
+
+      <!-- Pro (recommended) -->
+      <div style="background:#fff;border:2px solid var(--blue-deep);border-radius:14px;padding:22px;display:flex;flex-direction:column;position:relative">
+        <span style="position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--blue-deep);color:#fff;font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:3px 10px;border-radius:999px">Recommended</span>
+        <div style="font-weight:700;color:var(--blue-deep)">Pro</div>
+        <div class="price-num" style="font-size:30px;margin:6px 0">$99<span> / mo</span></div>
+        <div style="font-size:13px;color:#2b6cb0;font-weight:600">100,000 emails / month</div>
+        <ul class="price-feats" style="margin-top:12px">
+          <li><span class="tick">✓</span>Everything in Basic</li>
+          <li><span class="tick">✓</span>Your own sending domain (SMTP)</li>
+          <li><span class="tick">✓</span>REST API &amp; priority support</li>
+        </ul>
+        <a class="btn btn-blue btn-lg" style="width:100%;margin-top:auto" href="/signup">Get started</a>
+      </div>
+
+      <!-- Premium -->
+      <div style="background:#fff;border:1px solid #e6eef6;border-radius:14px;padding:22px;display:flex;flex-direction:column">
+        <div style="font-weight:700;color:var(--blue-deep)">Premium</div>
+        <div class="price-num" style="font-size:30px;margin:6px 0">$399<span> / mo</span></div>
+        <div style="font-size:13px;color:#2b6cb0;font-weight:600">200,000 emails / month</div>
+        <ul class="price-feats" style="margin-top:12px">
+          <li><span class="tick">✓</span>Everything in Pro</li>
+          <li><span class="tick">✓</span>Unlimited workspaces</li>
+          <li><span class="tick">✓</span>Dedicated manager &amp; SLA</li>
+        </ul>
+        <a class="btn btn-gray btn-lg" style="width:100%;margin-top:auto" href="/signup">Get started</a>
+      </div>
+
     </div>
+    <p class="price-note" style="text-align:center;margin-top:18px">
+      Need 500k–2.5M+ emails a month? <a href="/pricing" style="color:var(--blue-deep);font-weight:600">See full pricing &amp; the volume slider →</a><br>
+      Enterprise &amp; custom volume: <a href="mailto:ceo.conversioncrm@gmail.com" style="color:var(--blue-deep)">Contact us</a>
+    </p>
   </div>
 </section>
 

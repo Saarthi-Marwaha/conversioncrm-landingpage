@@ -17,6 +17,8 @@ import { workspaceSenderName } from "@/lib/emails/workspace-from";
 import { deliverEmail } from "@/lib/emails/transport";
 import { listRecipients, type Recipient } from "@/lib/emails/recipients";
 import { renderCustomEmailHtml, sanitizeTheme } from "@/lib/emails/render-custom";
+import { getQuotaState } from "@/lib/usage";
+import { planAllows, upgradeMessage } from "@/lib/entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -98,6 +100,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  // The hand-written composer is a paid feature (Basic and above).
+  if (!planAllows(workspace.plan, "custom_composer")) {
+    return NextResponse.json(
+      { error: upgradeMessage("custom_composer"), upgrade: true },
+      { status: 403 }
+    );
+  }
+
+  // Respect the monthly email cap. Sending stops at the limit; data keeps
+  // being collected regardless.
+  const quota = await getQuotaState(workspace);
+  if (quota.remaining <= 0) {
+    return NextResponse.json(
+      {
+        error: `Monthly email limit reached (${quota.used.toLocaleString()}/${quota.quota.toLocaleString()}). Upgrade to send more — your data is still being collected.`,
+        upgrade: true,
+      },
+      { status: 402 }
+    );
+  }
+
   let json: unknown;
   try {
     json = await request.json();
@@ -156,7 +179,7 @@ export async function POST(request: NextRequest) {
       input.audience === "all"
         ? audienceList
         : audienceList.filter((r) => r.stage === input.audience)
-    ).slice(0, MAX_BULK_RECIPIENTS);
+    ).slice(0, Math.min(MAX_BULK_RECIPIENTS, quota.remaining));
 
     if (recipients.length === 0) {
       return NextResponse.json(
@@ -189,8 +212,15 @@ export async function POST(request: NextRequest) {
   const failures: string[] = [];
   const logRows: Record<string, unknown>[] = [];
 
+  // Custom sending domain (SMTP) is Pro+. Lower plans fall back to Resend.
+  const deliveryWorkspace =
+    workspace.email_provider === "smtp" &&
+    !planAllows(workspace.plan, "custom_smtp")
+      ? { ...workspace, email_provider: "resend" as const }
+      : workspace;
+
   for (const r of recipients) {
-    const result = await deliverEmail(workspace, {
+    const result = await deliverEmail(deliveryWorkspace, {
       to: r.email,
       subject: input.subject,
       html,

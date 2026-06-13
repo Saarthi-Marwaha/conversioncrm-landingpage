@@ -69,6 +69,16 @@ export interface Workspace {
   smtp_pass: string | null;
   smtp_secure: boolean | null;
   smtp_from_email: string | null;
+  // ── Billing (Razorpay) ──
+  /** null = the owner hasn't chosen a plan yet (gated to /pricing). */
+  plan: "free" | "basic" | "pro" | "premium" | "enterprise" | null;
+  /** Monthly email cap; null falls back to the plan default. */
+  email_quota: number | null;
+  plan_status: "active" | "past_due" | "cancelled" | "none" | null;
+  plan_selected_at: string | null;
+  razorpay_customer_id: string | null;
+  razorpay_subscription_id: string | null;
+  plan_renews_at: string | null;
   created_at: string;
   updated_at: string;
 }

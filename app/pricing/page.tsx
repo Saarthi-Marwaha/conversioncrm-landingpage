@@ -1,217 +1,142 @@
 import Link from "next/link";
-import { Zap, Check } from "lucide-react";
+import { Zap } from "lucide-react";
+import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase/server";
+import { PricingTable } from "@/components/PricingTable";
+import type { PlanId } from "@/lib/plans";
 
 export const metadata = {
   title: "Pricing — ConversionCRM",
   description:
-    "Simple pricing for turning sign-ups into paid users. Start free, upgrade when it works.",
+    "Simple, volume-based pricing for turning sign-ups into paid users. Start free, upgrade when it works.",
 };
+
+export const dynamic = "force-dynamic";
 
 const NAVY = "text-[#0b3a5e]";
 
-type Tier = {
-  name: string;
-  price: string;
-  period: string;
-  tagline: string;
-  cta: string;
-  highlight?: boolean;
-  features: string[];
-};
-
-const TIERS: Tier[] = [
-  {
-    name: "Starter",
-    price: "$0",
-    period: "forever",
-    tagline: "See who's using your product, live.",
-    cta: "Get started",
-    features: [
-      "1 website",
-      "500 tracked users / month",
-      "Live overview dashboard",
-      "6-layer engagement scoring",
-      "Lifecycle stages",
-      "7-day event history",
-    ],
-  },
-  {
-    name: "Growth",
-    price: "$29",
-    period: "per month",
-    tagline: "Convert sign-ups on autopilot.",
-    cta: "Get started",
-    highlight: true,
-    features: [
-      "Everything in Starter",
-      "5,000 tracked users / month",
-      "Automated lifecycle emails",
-      "Hand-written email composer",
-      "Full user profiles & activity",
-      "30-day event history",
-      "Priority email support",
-    ],
-  },
-  {
-    name: "Scale",
-    price: "$79",
-    period: "per month",
-    tagline: "For teams with serious volume.",
-    cta: "Get started",
-    features: [
-      "Everything in Growth",
-      "Unlimited websites",
-      "50,000 tracked users / month",
-      "Custom email sending domain",
-      "API access",
-      "90-day event history",
-      "Dedicated support",
-    ],
-  },
-];
-
 const FAQS: { q: string; a: string }[] = [
   {
+    q: "What happens when I hit my monthly email limit?",
+    a: "Sending pauses for the rest of the calendar month — no emails go out past your plan's cap. Your user tracking, scoring and profiles keep collecting data the whole time. Upgrade (or wait for the month to roll over) to resume sending.",
+  },
+  {
     q: "Do I need a credit card to start?",
-    a: "No. The Starter plan is free forever — install the widget, watch users arrive, and upgrade only when the emails start converting.",
+    a: "No. The Free plan gives you 1,000 emails a month and the full live dashboard. Add a card only when you upgrade to Basic, Pro or Premium.",
   },
   {
-    q: "What counts as a tracked user?",
-    a: "A unique visitor or identified user who triggers at least one event in a calendar month. Anonymous visitors who later sign in are counted once.",
+    q: "How does the volume slider work?",
+    a: "Drag it to roughly how many emails you send each month and we'll point you at the right plan. Free covers 1k, Basic 20k, Pro 100k and Premium 200k. Above 200k we quote a price on the slider and our team sets you up.",
   },
   {
-    q: "Can I cancel anytime?",
-    a: "Yes. Plans are month-to-month with no contracts. Downgrading keeps your data — you just lose access to paid features.",
+    q: "Can I cancel or change plans anytime?",
+    a: "Yes. Plans are month-to-month. When you cancel you keep your paid features until the end of the period, then drop to Free — your data always stays put.",
   },
   {
-    q: "Do automated emails come from my domain?",
-    a: "On Growth, emails are sent with your product's name and your reply-to address. Scale adds a fully custom sending domain.",
+    q: "What counts toward the email limit?",
+    a: "Every email we actually send on your behalf — automated lifecycle emails and anything from the composer. Internal tracking events never count.",
   },
 ];
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let currentPlan: PlanId | null = null;
+  let hasWorkspace = false;
+  if (user) {
+    const admin = createSupabaseAdminClient();
+    const { data: ws } = await admin
+      .from("workspaces")
+      .select("plan")
+      .eq("owner_id", user.id)
+      .maybeSingle();
+    hasWorkspace = !!ws;
+    currentPlan = (ws?.plan as PlanId) ?? null;
+  }
+
+  const loggedIn = !!user;
+  const mustChoose = loggedIn && hasWorkspace && !currentPlan;
+
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-      {/* ── Header ─────────────────────────────────── */}
-      <header className="shadow-soft bg-white">
-        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+    <div className="min-h-screen bg-[#f4f8fc] text-gray-900">
+      {/* ── Header ── */}
+      <header className="bg-white shadow-soft">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2">
-            <div className="bg-sky-500 text-white p-1.5 rounded-md">
+            <div className="rounded-md bg-sky-500 p-1.5 text-white">
               <Zap className="h-4 w-4" />
             </div>
-            <span className="font-bold text-sm">ConversionCRM</span>
+            <span className="text-sm font-bold">ConversionCRM</span>
           </Link>
           <nav className="flex items-center gap-6 text-sm">
-            <Link
-              href="/login"
-              className="text-gray-500 hover:text-gray-900 transition-colors"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/signup"
-              className="rounded-md bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 transition-colors"
-            >
-              Start free
-            </Link>
+            {loggedIn ? (
+              <Link
+                href="/dashboard"
+                className="text-gray-500 transition-colors hover:text-gray-900"
+              >
+                Dashboard
+              </Link>
+            ) : (
+              <Link
+                href="/login"
+                className="text-gray-500 transition-colors hover:text-gray-900"
+              >
+                Sign in
+              </Link>
+            )}
+            {!loggedIn && (
+              <Link
+                href="/signup"
+                className="rounded-md bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-600"
+              >
+                Start free
+              </Link>
+            )}
           </nav>
         </div>
       </header>
 
-      {/* ── Hero ───────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-6 pt-16 pb-12 text-center">
-        <span className="inline-block text-xs font-semibold text-sky-700 bg-sky-50 rounded-full px-3 py-1 mb-5">
+      {/* ── Hero ── */}
+      <section className="mx-auto max-w-6xl px-6 pb-10 pt-16 text-center">
+        <span className="mb-5 inline-block rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
           Pricing
         </span>
-        <h1 className={`text-4xl sm:text-5xl font-bold tracking-tight ${NAVY}`}>
-          Simple pricing that pays for itself
+        <h1 className={`text-4xl font-bold tracking-tight sm:text-5xl ${NAVY}`}>
+          Pricing that scales with your sends
         </h1>
-        <p className="text-gray-500 mt-4 max-w-xl mx-auto leading-relaxed">
-          One converted user usually covers a month of ConversionCRM. Start
-          free, upgrade when the emails start working.
-        </p>
-        <div className="mt-6 inline-flex items-center gap-2 rounded-md bg-sky-50 px-4 py-2.5 text-sm font-medium text-[#0b3a5e] shadow-soft">
-          <span aria-hidden>🎉</span>
-          These prices are allocated for later — beta customers enjoy free
-          access to everything while we&apos;re in beta.
-        </div>
-      </section>
-
-      {/* ── Tiers ──────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-6 pb-20">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-          {TIERS.map((tier) => (
-            <div
-              key={tier.name}
-              className={
-                tier.highlight
-                  ? "relative rounded-lg ring-2 ring-sky-400 bg-sky-50/60 p-7 flex flex-col shadow-card-lg"
-                  : "rounded-lg bg-white p-7 flex flex-col shadow-card"
-              }
-            >
-              {tier.highlight && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[11px] font-bold uppercase tracking-wide bg-sky-500 text-white rounded-full px-3 py-1">
-                  Most popular
-                </span>
-              )}
-              <h2 className={`text-sm font-bold uppercase tracking-wide ${NAVY}`}>
-                {tier.name}
-              </h2>
-              <div className="mt-3 flex items-baseline gap-1.5">
-                <span className={`text-4xl font-bold tabular-nums ${NAVY}`}>
-                  {tier.price}
-                </span>
-                <span className="text-sm text-gray-400">{tier.period}</span>
-              </div>
-              <p className="text-sm text-gray-500 mt-2">{tier.tagline}</p>
-
-              {/* Visual only — billing isn't wired up yet */}
-              <button
-                type="button"
-                aria-disabled="true"
-                title="Billing launches soon"
-                className={
-                  tier.highlight
-                    ? "mt-6 w-full rounded-md bg-sky-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-600 transition-colors cursor-default"
-                    : "mt-6 w-full rounded-md bg-white shadow-soft px-4 py-2.5 text-sm font-semibold text-gray-800 hover:text-sky-800 transition-colors cursor-default"
-                }
-              >
-                {tier.cta}
-              </button>
-
-              <ul className="mt-6 space-y-2.5 text-sm text-gray-600 flex-1">
-                {tier.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2.5">
-                    <Check className="h-4 w-4 text-sky-500 mt-0.5 flex-shrink-0" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-        <p className="text-center text-xs text-gray-400 mt-6">
-          Pricing kicks in after beta — everyone using ConversionCRM today
-          keeps free access to every feature until then. No card required.
+        <p className="mx-auto mt-4 max-w-xl leading-relaxed text-gray-500">
+          Pay for the email volume you actually use. Start free with 1,000
+          emails a month, upgrade when the emails start converting.
         </p>
       </section>
 
-      {/* ── FAQ ────────────────────────────────────── */}
-      <section className="bg-sky-50/50">
-        <div className="max-w-3xl mx-auto px-6 py-16">
-          <h2 className={`text-2xl font-bold text-center ${NAVY}`}>
+      {/* ── Toggle + plans ── */}
+      <section className="mx-auto max-w-6xl px-6 pb-20">
+        <PricingTable
+          loggedIn={loggedIn}
+          currentPlan={currentPlan}
+          mustChoose={mustChoose}
+        />
+      </section>
+
+      {/* ── FAQ ── */}
+      <section className="bg-white">
+        <div className="mx-auto max-w-3xl px-6 py-16">
+          <h2 className={`text-center text-2xl font-bold ${NAVY}`}>
             Questions, answered
           </h2>
-          <div className="mt-8 divide-y divide-sky-50 bg-white rounded-lg shadow-card px-6">
+          <div className="mt-8 divide-y divide-sky-50 rounded-lg bg-[#f4f8fc] px-6 shadow-card">
             {FAQS.map((faq) => (
               <details key={faq.q} className="group py-4">
-                <summary className="flex items-center justify-between cursor-pointer list-none text-sm font-semibold text-gray-900 hover:text-sky-800 transition-colors">
+                <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-gray-900 transition-colors hover:text-sky-800">
                   {faq.q}
-                  <span className="ml-4 text-gray-300 group-open:rotate-45 transition-transform text-lg leading-none">
+                  <span className="ml-4 text-lg leading-none text-gray-300 transition-transform group-open:rotate-45">
                     +
                   </span>
                 </summary>
-                <p className="text-sm text-gray-500 leading-relaxed mt-2 pr-8">
+                <p className="mt-2 pr-8 text-sm leading-relaxed text-gray-500">
                   {faq.a}
                 </p>
               </details>
@@ -220,23 +145,8 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* ── Footer CTA ─────────────────────────────── */}
-      <footer className="max-w-5xl mx-auto px-6 py-16 text-center">
-        <h2 className={`text-2xl font-bold ${NAVY}`}>
-          Watch your first user convert this week
-        </h2>
-        <p className="text-gray-500 text-sm mt-2">
-          Two-minute install. The dashboard fills up in seconds.
-        </p>
-        <Link
-          href="/signup"
-          className="inline-block mt-6 rounded-md bg-sky-500 px-6 py-3 text-sm font-semibold text-white hover:bg-sky-600 transition-colors"
-        >
-          Start free
-        </Link>
-        <p className="text-xs text-gray-300 mt-10">
-          © {new Date().getFullYear()} ConversionCRM
-        </p>
+      <footer className="mx-auto max-w-6xl px-6 py-10 text-center text-xs text-gray-400">
+        © {new Date().getFullYear()} ConversionCRM
       </footer>
     </div>
   );

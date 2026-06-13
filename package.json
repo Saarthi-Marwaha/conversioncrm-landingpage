@@ -12,7 +12,6 @@
     "tunnel": "node scripts/tunnel.js"
   },
   "dependencies": {
-    "@lemonsqueezy/lemonsqueezy.js": "^3.3.0",
     "@radix-ui/react-avatar": "^1.1.0",
     "@radix-ui/react-dialog": "^1.1.1",
     "@radix-ui/react-dropdown-menu": "^2.1.1",

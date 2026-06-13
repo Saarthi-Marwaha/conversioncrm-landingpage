@@ -88,12 +88,16 @@ export async function signIn(formData: FormData) {
     const admin = createSupabaseAdminClient();
     const { data: workspace } = await admin
       .from("workspaces")
-      .select("id")
+      .select("id, plan")
       .eq("owner_id", user.id)
       .single();
 
+    // Mandatory funnel: set up → choose a plan → dashboard. No bypass.
     if (!workspace) {
       redirect("/onboarding");
+    }
+    if (!workspace.plan) {
+      redirect("/pricing");
     }
   }
 
@@ -198,7 +202,8 @@ export async function createWorkspace(formData: FormData) {
     .single();
 
   if (existing) {
-    redirect("/dashboard/settings");
+    // Already onboarded — let the dashboard's plan gate route them.
+    redirect("/dashboard");
   }
 
   // Production API key for this workspace's widget
@@ -231,5 +236,6 @@ export async function createWorkspace(formData: FormData) {
     fail("Failed to create workspace. Please try again.");
   }
 
-  redirect("/dashboard/settings");
+  // Fresh workspace has no plan yet — force the pricing choice (no bypass).
+  redirect("/pricing");
 }

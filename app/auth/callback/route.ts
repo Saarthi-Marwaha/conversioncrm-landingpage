@@ -23,11 +23,15 @@ export async function GET(request: NextRequest) {
         const admin = createSupabaseAdminClient();
         const { data: workspace } = await admin
           .from("workspaces")
-          .select("id")
+          .select("id, plan")
           .eq("owner_id", user.id)
           .maybeSingle();
+        // Mandatory funnel: set up → choose a plan → dashboard.
         if (!workspace) {
           return NextResponse.redirect(`${origin}/onboarding`);
+        }
+        if (!workspace.plan) {
+          return NextResponse.redirect(`${origin}/pricing`);
         }
       }
       return NextResponse.redirect(`${origin}${next}`);

@@ -2,6 +2,8 @@ import type React from "react";
 import { render } from "@react-email/render";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { deliverEmail, type DeliveryWorkspace } from "@/lib/emails/transport";
+import { canSendEmail } from "@/lib/usage";
+import { planAllows } from "@/lib/entitlements";
 import type { EmailTrigger } from "@/types";
 
 interface SendEmailOptions {
@@ -26,9 +28,9 @@ interface SendEmailOptions {
   metadata?: Record<string, unknown>;
 }
 
-/** Workspace fields needed to pick + drive the delivery provider. */
+/** Workspace fields needed to pick + drive the delivery provider + quota. */
 const DELIVERY_FIELDS =
-  "id, name, product_name, email_sender_name, reply_to_email, email_provider, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_secure, smtp_from_email";
+  "id, name, product_name, email_sender_name, reply_to_email, email_provider, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_secure, smtp_from_email, plan, email_quota, plan_status, plan_renews_at";
 
 /**
  * Sends a transactional email through the workspace's configured provider
@@ -71,6 +73,61 @@ export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
     product_name:
       workspace?.product_name ?? (wsRow as DeliveryWorkspace | null)?.product_name,
   };
+
+  // ── Hard monthly email quota ────────────────────────────────────────
+  // Once a workspace exhausts its plan allowance we stop *sending* but keep
+  // collecting data (events keep flowing via /api/events). Log a skipped
+  // row and bail before delivery — nothing leaves until they upgrade or the
+  // month rolls over.
+  const planRow = wsRow as unknown as {
+    plan?: string | null;
+    email_quota?: number | null;
+    plan_status?: string | null;
+    plan_renews_at?: string | null;
+  } | null;
+
+  const quota = await canSendEmail({
+    id: workspaceId,
+    plan: planRow?.plan,
+    email_quota: planRow?.email_quota,
+    plan_status: planRow?.plan_status,
+    plan_renews_at: planRow?.plan_renews_at,
+  });
+
+  if (!quota.allowed) {
+    await supabase.from("email_logs").insert({
+      workspace_id: workspaceId,
+      user_id: userId ?? null,
+      end_user_id: endUserId ?? null,
+      trigger,
+      resend_message_id: null,
+      subject,
+      status: "skipped",
+      sent_at: sentAt,
+      metadata: {
+        ...(metadata ?? {}),
+        reason: "quota_exceeded",
+        plan: quota.plan,
+        used: quota.used,
+        quota: quota.quota,
+      },
+    });
+    console.warn(
+      `[Email] Quota reached for workspace ${workspaceId} ` +
+        `(${quota.used}/${quota.quota}, plan ${quota.plan}) — ${trigger} skipped.`
+    );
+    return false;
+  }
+
+  // ── Custom-domain (SMTP) entitlement ────────────────────────────────
+  // Only Pro+ may send from their own SMTP; lower plans fall back to the
+  // platform Resend sender even if SMTP creds linger from onboarding.
+  if (
+    delivery.email_provider === "smtp" &&
+    !planAllows(quota.plan, "custom_smtp")
+  ) {
+    delivery.email_provider = "resend";
+  }
 
   try {
     const html = await render(react);

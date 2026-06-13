@@ -33,6 +33,56 @@ export async function getWorkspaceByOwnerId(
   return data ?? null;
 }
 
+export async function getWorkspaceById(
+  workspaceId: string
+): Promise<Workspace | null> {
+  const supabase = createSupabaseAdminClient();
+  const { data } = await supabase
+    .from("workspaces")
+    .select("*")
+    .eq("id", workspaceId)
+    .single();
+  return data ?? null;
+}
+
+/** Fields the billing layer is allowed to write on a workspace. */
+export type WorkspacePlanUpdate = Partial<
+  Pick<
+    Workspace,
+    | "plan"
+    | "email_quota"
+    | "plan_status"
+    | "plan_selected_at"
+    | "razorpay_customer_id"
+    | "razorpay_subscription_id"
+    | "plan_renews_at"
+  >
+>;
+
+export async function updateWorkspacePlan(
+  workspaceId: string,
+  fields: WorkspacePlanUpdate
+): Promise<void> {
+  const supabase = createSupabaseAdminClient();
+  await supabase
+    .from("workspaces")
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq("id", workspaceId);
+}
+
+/** Maps a Razorpay subscription id back to its workspace (webhook lookup). */
+export async function getWorkspaceByRazorpaySubscription(
+  subscriptionId: string
+): Promise<Workspace | null> {
+  const supabase = createSupabaseAdminClient();
+  const { data } = await supabase
+    .from("workspaces")
+    .select("*")
+    .eq("razorpay_subscription_id", subscriptionId)
+    .maybeSingle();
+  return data ?? null;
+}
+
 // ─────────────────────────────────────────────
 // End Users
 // ─────────────────────────────────────────────

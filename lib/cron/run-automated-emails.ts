@@ -15,6 +15,7 @@ import { CheckInEmail } from "@/emails/templates/CheckIn";
 import { UpgradeOfferEmail } from "@/emails/templates/UpgradeOffer";
 import { UrgencyEmail } from "@/emails/templates/Urgency";
 import { ChurnPreventionEmail } from "@/emails/templates/ChurnPrevention";
+import { planAllows } from "@/lib/entitlements";
 import type { EmailTrigger, LifecycleStage } from "@/types";
 
 export type RunAutomatedEmailsResult = {
@@ -32,6 +33,7 @@ type WorkspaceRow = {
   key_feature_url: string | null;
   reply_to_email: string | null;
   email_sender_name: string | null;
+  plan: string | null;
 };
 
 type EventRow = {
@@ -258,6 +260,10 @@ async function processWorkspaceEmails(
   ws: WorkspaceRow,
   result: RunAutomatedEmailsResult
 ): Promise<void> {
+  // Automated lifecycle emails are a paid feature (Basic+). Free workspaces
+  // keep collecting data but receive none of the automated sequence.
+  if (!planAllows(ws.plan, "automated_emails")) return;
+
   const supabase = createSupabaseAdminClient();
 
   const [
@@ -369,7 +375,7 @@ export async function runAutomatedEmailsForWorkspace(
   const { data: ws, error } = await supabase
     .from("workspaces")
     .select(
-      "id, name, product_name, website_url, key_feature_name, key_feature_event, key_feature_url, reply_to_email, email_sender_name, emails_last_run_at"
+      "id, name, product_name, website_url, key_feature_name, key_feature_event, key_feature_url, reply_to_email, email_sender_name, plan, emails_last_run_at"
     )
     .eq("id", workspaceId)
     .single();
@@ -411,7 +417,7 @@ export async function runAutomatedEmails(): Promise<RunAutomatedEmailsResult> {
   const { data: workspaces, error: wsError } = await supabase
     .from("workspaces")
     .select(
-      "id, name, product_name, website_url, key_feature_name, key_feature_event, key_feature_url, reply_to_email, email_sender_name"
+      "id, name, product_name, website_url, key_feature_name, key_feature_event, key_feature_url, reply_to_email, email_sender_name, plan"
     )
     .not("reply_to_email", "is", null);
 
