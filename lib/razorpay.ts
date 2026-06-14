@@ -12,7 +12,7 @@
  * starts once the current paid month is over.
  *
  * Env: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET,
- *      RAZORPAY_PLAN_BASIC / _PRO / _PREMIUM, RAZORPAY_PLAN_PREMIUM_MAP.
+ *      RAZORPAY_PLAN_BASIC / _PRO / _SCALE.
  */
 import crypto from "crypto";
 import { planById, type PlanId } from "@/lib/plans";
@@ -45,25 +45,15 @@ async function rzp(
 }
 
 // ── Plan ↔ Razorpay plan_id mapping ──────────────────────────────────
-const PREMIUM_MAP: Record<string, string> = (() => {
-  try {
-    return JSON.parse(process.env.RAZORPAY_PLAN_PREMIUM_MAP || "{}");
-  } catch {
-    return {};
-  }
-})();
-
-/** Razorpay plan_id for a (plan, optional premium volume). */
-export function razorpayPlanId(plan: PlanId, emails?: number): string | undefined {
-  if (plan === "premium") {
-    return PREMIUM_MAP[String(emails ?? 200_000)] || process.env.RAZORPAY_PLAN_PREMIUM;
-  }
+/** Razorpay plan_id for a purchasable plan. */
+export function razorpayPlanId(plan: PlanId): string | undefined {
   if (plan === "basic") return process.env.RAZORPAY_PLAN_BASIC;
   if (plan === "pro") return process.env.RAZORPAY_PLAN_PRO;
+  if (plan === "scale") return process.env.RAZORPAY_PLAN_SCALE;
   return undefined;
 }
 
-/** Reverse lookup: a Razorpay plan_id → our plan + monthly quota. */
+/** Reverse lookup: a Razorpay plan_id → our plan + monthly email quota. */
 export function planFromRazorpayPlanId(
   planId: string
 ): { plan: PlanId; quota: number } | null {
@@ -71,9 +61,8 @@ export function planFromRazorpayPlanId(
     return { plan: "basic", quota: planById("basic").emailQuota };
   if (planId === process.env.RAZORPAY_PLAN_PRO)
     return { plan: "pro", quota: planById("pro").emailQuota };
-  for (const [vol, pid] of Object.entries(PREMIUM_MAP)) {
-    if (pid === planId) return { plan: "premium", quota: Number(vol) };
-  }
+  if (planId === process.env.RAZORPAY_PLAN_SCALE)
+    return { plan: "scale", quota: planById("scale").emailQuota };
   return null;
 }
 

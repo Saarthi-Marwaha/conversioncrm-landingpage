@@ -81,5 +81,7 @@ export async function POST(request: NextRequest) {
     pending_plan_starts_at: null,
   });
 
-  return NextResponse.json({ ok: true, redirect: "/dashboard" });
+  // Land paying customers on the install guide so they can get the snippet
+  // onto their site right away.
+  return NextResponse.json({ ok: true, redirect: "/dashboard/guide?welcome=1" });
 }

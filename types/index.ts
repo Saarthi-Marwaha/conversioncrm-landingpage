@@ -71,7 +71,7 @@ export interface Workspace {
   smtp_from_email: string | null;
   // ── Billing (Razorpay) ──
   /** null = the owner hasn't chosen a plan yet (gated to /pricing). */
-  plan: "free" | "basic" | "pro" | "premium" | "enterprise" | null;
+  plan: "free" | "basic" | "pro" | "scale" | "enterprise" | null;
   /** Monthly email cap; null falls back to the plan default. */
   email_quota: number | null;
   plan_status: "active" | "past_due" | "cancelled" | "none" | null;
@@ -84,7 +84,7 @@ export interface Workspace {
   /** First day (UTC) of the period rollover was last reconciled for. */
   usage_period: string | null;
   /** A scheduled upgrade that starts when the current paid month ends. */
-  pending_plan: "free" | "basic" | "pro" | "premium" | "enterprise" | null;
+  pending_plan: "free" | "basic" | "pro" | "scale" | "enterprise" | null;
   pending_plan_starts_at: string | null;
   created_at: string;
   updated_at: string;

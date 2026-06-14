@@ -11,13 +11,14 @@ export default async function ComposerPage() {
 
   if (!workspace) redirect("/login");
 
-  // The custom-HTML composer is a Pro+ feature.
+  // The manual email composer is a Basic+ feature (Free gets the automated
+  // lifecycle emails, but writing one-off / broadcast emails needs a paid plan).
   if (!planAllows(workspace.plan, "custom_composer")) {
     return (
       <UpgradeGate
-        title="Email composer is a Pro feature"
-        description="Write and send custom-HTML emails to your users from the dashboard."
-        requiredPlan="Pro"
+        title="The email composer is a Basic feature"
+        description="Write and send one-off or broadcast emails to your users from the dashboard. Your automated lifecycle emails keep running on every plan."
+        requiredPlan="Basic"
       />
     );
   }

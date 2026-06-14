@@ -19,26 +19,11 @@ import {
   razorpayPlanId,
   updateSubscriptionPlan,
 } from "@/lib/razorpay";
-import {
-  PLANS,
-  PURCHASABLE_PLANS,
-  PREMIUM_VOLUMES,
-  type PlanId,
-} from "@/lib/plans";
+import { PLANS, PURCHASABLE_PLANS, type PlanId } from "@/lib/plans";
 
 const schema = z.object({
-  plan: z.enum(["basic", "pro", "premium"]),
-  /** Selected Premium slider volume (200k–2.5M). Ignored for other plans. */
-  emails: z.number().int().positive().optional(),
+  plan: z.enum(["basic", "pro", "scale"]),
 });
-
-/** Quota for a checkout: Premium honours the chosen slider volume. */
-function quotaFor(plan: PlanId, emails?: number): number {
-  if (plan === "premium" && emails && PREMIUM_VOLUMES.includes(emails)) {
-    return emails;
-  }
-  return PLANS[plan].emailQuota;
-}
 
 export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -54,7 +39,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid plan" }, { status: 422 });
   }
   const plan = parsed.data.plan as PlanId;
-  const emails = parsed.data.emails;
 
   if (!PURCHASABLE_PLANS.includes(plan)) {
     return NextResponse.json({ error: "Plan not purchasable" }, { status: 422 });
@@ -65,7 +49,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Complete setup first" }, { status: 404 });
   }
 
-  const quota = quotaFor(plan, emails);
+  const quota = PLANS[plan].emailQuota;
 
   // Pre-launch fallback: no gateway configured → activate immediately.
   if (!razorpayConfigured()) {
@@ -78,7 +62,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, redirect: "/dashboard" });
   }
 
-  const planId = razorpayPlanId(plan, emails);
+  const planId = razorpayPlanId(plan);
   if (!planId) {
     return NextResponse.json(
       { error: "This plan isn't configured for billing yet." },

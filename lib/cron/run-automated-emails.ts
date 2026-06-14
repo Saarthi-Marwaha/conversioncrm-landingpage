@@ -15,7 +15,6 @@ import { CheckInEmail } from "@/emails/templates/CheckIn";
 import { UpgradeOfferEmail } from "@/emails/templates/UpgradeOffer";
 import { UrgencyEmail } from "@/emails/templates/Urgency";
 import { ChurnPreventionEmail } from "@/emails/templates/ChurnPrevention";
-import { planAllows } from "@/lib/entitlements";
 import type { EmailTrigger, LifecycleStage } from "@/types";
 
 export type RunAutomatedEmailsResult = {
@@ -260,10 +259,8 @@ async function processWorkspaceEmails(
   ws: WorkspaceRow,
   result: RunAutomatedEmailsResult
 ): Promise<void> {
-  // Automated lifecycle emails are a paid feature (Basic+). Free workspaces
-  // keep collecting data but receive none of the automated sequence.
-  if (!planAllows(ws.plan, "automated_emails")) return;
-
+  // The 8 behaviour-triggered lifecycle emails run on EVERY plan, including
+  // Free — the monthly quota in sendEmail() is what bounds volume per tier.
   const supabase = createSupabaseAdminClient();
 
   const [

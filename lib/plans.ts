@@ -4,181 +4,175 @@
  * Dependency-free so it can be imported from the edge middleware, server
  * routes, and client components alike.
  *
- * ── PRICING & MARGIN (target: ≥50% gross profit) ──────────────────────
- * Our only variable cost is outbound email (Resend, transactional).
- * Resend's real cost to us (from resend.com/pricing?product=transactional):
- *   Free  $0   3,000/mo  ·  Pro $20  50,000/mo  ·  Scale $90  100,000/mo
- *   overage $0.90 / 1,000 emails  ·  Enterprise custom
+ * ── VALUE MODEL ───────────────────────────────────────────────────────
+ * Tiers scale on VALUE (depth of automation + tracked-user scale + team /
+ * scaling features), not on email volume. Every tier — including Free —
+ * sends the full set of behaviour-triggered emails and ships the tracking
+ * snippet + REST API. Email is a generous *included* allowance; overage is
+ * $0.90 / 1,000 (≈ Resend cost) so heavy senders never feel gouged.
  *
- *     volume        Resend cost     our price     gross margin
- *     ───────────────────────────────────────────────────────────
- *       1,000          $0             $0          — (free)
- *      15,000          ~$6–13         $20         ~50–70% (pooled)
- *     100,000          $90            $180        50%
- *     200,000          $180           $360        50%
- *     500,000          $450           $900        50%
- *   1,000,000          $900           $1,800      50%
- *   1,500,000          $1,350         $2,700      50%
- *   2,500,000          $2,250         $4,500      50%
- *   2,500,000+         custom         Contact us  —
+ *     tier        price     tracked users/mo   emails/mo   workspaces
+ *     ──────────────────────────────────────────────────────────────────
+ *     Free        $0          1,000             2,000        1
+ *     Basic       $49         5,000             20,000       1
+ *     Pro         $199        25,000            100,000      3   (recommended)
+ *     Scale       $699        150,000           350,000      10
+ *     Enterprise  custom      custom            custom       unlimited
  *
- * Price = 2 × Resend cost ⇒ a clean 50% gross margin at every paid step.
- * (Pro is $180, not $150 — at Resend's $90/100k, $150 would be only 40%.)
+ * Email margin clears ≥55% at full usage on every paid tier (Resend cost
+ * ≈ $90/100k, $0.90/1k overage).
  */
 
-export type PlanId = "free" | "basic" | "pro" | "premium" | "enterprise";
+export type PlanId = "free" | "basic" | "pro" | "scale" | "enterprise";
 
 export interface PlanDef {
   id: PlanId;
   name: string;
   /** Monthly price in USD. `null` = custom / contact sales. */
   priceUsd: number | null;
-  /** Base monthly email-send cap (before rollover). */
+  /** Monthly tracked-users allowance (the headline value metric). */
+  trackedUsers: number | null;
+  /** Included monthly email-send allowance. */
   emailQuota: number;
+  /** Workspaces allowed. `null` = unlimited. */
+  workspaces: number | null;
   /** Short marketing line. */
   blurb: string;
   recommended?: boolean;
-  /** Feature bullets shown with a check. */
+  /** Delta feature bullets ("Everything in X" + what this tier adds). */
   features: string[];
   /** Bullets shown crossed-out (not in this plan). */
   notIncluded?: string[];
-  /** Capability keys this plan unlocks (see lib/entitlements). */
+  /** Enforced capability keys this plan unlocks (see lib/entitlements). */
   entitlements: Entitlement[];
   /** Env var holding the matching Razorpay plan_id (paid plans only). */
   razorpayPlanEnv?: string;
 }
 
+/**
+ * Only capabilities that are actually ENFORCED in code. (Marketing features
+ * like A/B testing / attribution live in `features[]` until they ship.)
+ */
 export type Entitlement =
   | "automated_emails"
   | "custom_composer"
   | "custom_smtp"
   | "api_access"
-  | "unlimited_sites"
   | "priority_access";
 
 export const SALES_EMAIL =
   process.env.NEXT_PUBLIC_SALES_EMAIL || "ceo.conversioncrm@gmail.com";
 
-// Tracking (snippet/widget), live overview, the users table and an API key
-// are available on EVERY plan — they're how data gets collected, never gated.
-const ALWAYS_ON: Entitlement[] = ["api_access"];
+// In EVERY plan, Free included: the tracking snippet + REST API, and the full
+// set of behaviour-triggered (lifecycle) emails.
+const ALWAYS_ON: Entitlement[] = ["api_access", "automated_emails"];
 
 export const PLANS: Record<PlanId, PlanDef> = {
   free: {
     id: "free",
     name: "Free",
     priceUsd: 0,
-    emailQuota: 1_000,
-    blurb: "Track every signup and watch them activate, live.",
+    trackedUsers: 1_000,
+    emailQuota: 2_000,
+    workspaces: 1,
+    blurb: "See the whole loop work — for real.",
     features: [
-      "1,000 emails / month",
-      "Tracking snippet & live overview",
-      "Full users table & profiles",
-      "6-layer engagement scoring & stages",
-      "API key access",
+      "All 8 behaviour-triggered emails",
+      "6-layer engagement scoring + lifecycle stages",
+      "Auto-tracking + identify() / track()",
+      "Tracking snippet + REST API key",
+      "Live dashboard, user profiles & intent detection",
+      "Guardrails: cooldowns, never email paying users",
     ],
     notIncluded: [
-      "Automated lifecycle emails",
-      "Custom sending domain (SMTP)",
-      "Email composer (custom HTML)",
+      "Send from your own domain (SMTP)",
+      "Manual email composer",
+      "A/B testing & revenue attribution",
     ],
     entitlements: [...ALWAYS_ON],
   },
   basic: {
     id: "basic",
     name: "Basic",
-    priceUsd: 20,
-    emailQuota: 15_000,
-    blurb: "Convert signups with automated lifecycle emails.",
+    priceUsd: 49,
+    trackedUsers: 5_000,
+    emailQuota: 20_000,
+    workspaces: 1,
+    blurb: "Run conversion on autopilot, from your own brand.",
     features: [
-      "15,000 emails / month",
       "Everything in Free",
-      "Automated lifecycle emails",
-      "Custom sending domain (SMTP)",
-      "Full users table & API access",
+      "Send from your own domain (SMTP)",
+      "Custom sender name + reply-to",
+      "Manual email composer (one-off & broadcasts)",
       "30-day event history",
+      "2 seats",
     ],
-    notIncluded: ["Email composer (custom HTML)"],
-    entitlements: [...ALWAYS_ON, "automated_emails", "custom_smtp"],
+    notIncluded: ["A/B testing", "Revenue attribution", "Upgrade-intent alerts"],
+    entitlements: [...ALWAYS_ON, "custom_smtp", "custom_composer"],
     razorpayPlanEnv: "RAZORPAY_PLAN_BASIC",
   },
   pro: {
     id: "pro",
     name: "Pro",
-    priceUsd: 180,
+    priceUsd: 199,
+    trackedUsers: 25_000,
     emailQuota: 100_000,
-    blurb: "Everything unlocked — including the custom HTML composer.",
+    workspaces: 3,
+    blurb: "The full engine: optimise, attribute, and get alerted.",
     recommended: true,
     features: [
-      "100,000 emails / month",
       "Everything in Basic",
-      "Email composer (custom HTML)",
-      "All features unlocked",
-      "Custom sending domain (SMTP)",
-      "90-day event history",
+      "A/B testing (subject + content)",
+      "Revenue attribution",
+      "Upgrade-intent alerts + team notifications",
+      "In-app nudges + webhooks",
+      "Behavioural segments · 90-day history",
+      "3 workspaces · 5 seats",
     ],
-    entitlements: [
-      ...ALWAYS_ON,
-      "automated_emails",
-      "custom_smtp",
-      "custom_composer",
-    ],
+    entitlements: [...ALWAYS_ON, "custom_smtp", "custom_composer"],
     razorpayPlanEnv: "RAZORPAY_PLAN_PRO",
   },
-  premium: {
-    id: "premium",
-    name: "Premium",
-    priceUsd: 360,
-    emailQuota: 200_000,
-    blurb: "Serious scale with priority access.",
+  scale: {
+    id: "scale",
+    name: "Scale",
+    priceUsd: 699,
+    trackedUsers: 150_000,
+    emailQuota: 350_000,
+    workspaces: 10,
+    blurb: "Run it across products and teams.",
     features: [
-      "200,000 emails / month",
       "Everything in Pro",
-      "Unlimited websites / workspaces",
-      "Priority access",
-      "1-year event history",
+      "Multi-product + up to 10 sender brands",
+      "Role-based access (RBAC)",
+      "Activation + ROI dashboards",
+      "Priority support + onboarding",
+      "12-month history",
+      "10 workspaces · 15 seats",
     ],
-    entitlements: [
-      ...ALWAYS_ON,
-      "automated_emails",
-      "custom_smtp",
-      "custom_composer",
-      "unlimited_sites",
-      "priority_access",
-    ],
-    razorpayPlanEnv: "RAZORPAY_PLAN_PREMIUM",
+    entitlements: [...ALWAYS_ON, "custom_smtp", "custom_composer", "priority_access"],
+    razorpayPlanEnv: "RAZORPAY_PLAN_SCALE",
   },
   enterprise: {
     id: "enterprise",
     name: "Enterprise",
     priceUsd: null,
+    trackedUsers: null,
     emailQuota: 5_000_000,
-    blurb: "Custom volume, infrastructure and pricing.",
+    workspaces: null,
+    blurb: "Security, control, and a team behind you.",
     features: [
-      "2.5M+ emails / month",
-      "Everything in Premium",
-      "Custom volume & pricing",
-      "Dedicated infrastructure",
-      "Priority access",
+      "Everything in Scale",
+      "Custom tracked-users + email volume",
+      "Unlimited workspaces + sender brands",
+      "SSO / SAML + audit log",
+      "SLA + security review + DPA",
+      "Dedicated CSM + onboarding",
     ],
-    entitlements: [
-      ...ALWAYS_ON,
-      "automated_emails",
-      "custom_smtp",
-      "custom_composer",
-      "unlimited_sites",
-      "priority_access",
-    ],
+    entitlements: [...ALWAYS_ON, "custom_smtp", "custom_composer", "priority_access"],
   },
 };
 
-export const PLAN_ORDER: PlanId[] = [
-  "free",
-  "basic",
-  "pro",
-  "premium",
-  "enterprise",
-];
+export const PLAN_ORDER: PlanId[] = ["free", "basic", "pro", "scale", "enterprise"];
 
 export function planById(id: string | null | undefined): PlanDef {
   return (id && PLANS[id as PlanId]) || PLANS.free;
@@ -190,44 +184,17 @@ export function planAtLeast(a: PlanId, b: PlanId): boolean {
 }
 
 /** The plans the customer can buy directly (Razorpay). */
-export const PURCHASABLE_PLANS: PlanId[] = ["basic", "pro", "premium"];
-
-/**
- * The volume slider used on the pricing page. Each stop maps a monthly email
- * volume to its price (2× Resend cost ⇒ 50% margin) and the plan it implies.
- * Volumes above Premium's 200k are quoted but routed to sales (Contact us).
- */
-export interface VolumeStop {
-  emails: number;
-  /** Indicative monthly price (USD). `null` = custom. */
-  priceUsd: number | null;
-  plan: PlanId;
-  /** Whether this stop is bought self-serve or routed to sales. */
-  contactSales?: boolean;
-}
-
-export const VOLUME_STOPS: VolumeStop[] = [
-  { emails: 1_000, priceUsd: 0, plan: "free" },
-  { emails: 15_000, priceUsd: 20, plan: "basic" },
-  { emails: 100_000, priceUsd: 180, plan: "pro" },
-  { emails: 200_000, priceUsd: 360, plan: "premium" },
-  // Premium scales self-serve up to 2.5M; only 3M+ routes to sales.
-  { emails: 500_000, priceUsd: 900, plan: "premium" },
-  { emails: 1_000_000, priceUsd: 1_800, plan: "premium" },
-  { emails: 1_500_000, priceUsd: 2_700, plan: "premium" },
-  { emails: 2_500_000, priceUsd: 4_500, plan: "premium" },
-  { emails: 3_000_000, priceUsd: null, plan: "enterprise", contactSales: true },
-];
-
-/** Self-serve Premium volumes (used to validate a chosen slider stop). */
-export const PREMIUM_VOLUMES = VOLUME_STOPS.filter(
-  (s) => s.plan === "premium"
-).map((s) => s.emails);
+export const PURCHASABLE_PLANS: PlanId[] = ["basic", "pro", "scale"];
 
 export function formatEmails(n: number): string {
   if (n >= 1_000_000) return `${n / 1_000_000}M`;
   if (n >= 1_000) return `${n / 1_000}k`;
   return String(n);
+}
+
+export function formatCount(n: number | null): string {
+  if (n === null) return "Custom";
+  return n.toLocaleString("en-US");
 }
 
 export function formatPrice(p: number | null): string {

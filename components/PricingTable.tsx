@@ -1,14 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Check, X, Zap, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { Check, X, Loader2, Zap } from "lucide-react";
 import {
   PLANS,
-  PLAN_ORDER,
-  VOLUME_STOPS,
   SALES_EMAIL,
-  formatEmails,
   formatPrice,
+  formatEmails,
+  formatCount,
   type PlanId,
 } from "@/lib/plans";
 
@@ -21,41 +20,31 @@ interface Props {
   mustChoose: boolean;
 }
 
-const CARD_PLANS: PlanId[] = ["free", "basic", "pro", "premium"];
+const CARD_PLANS: PlanId[] = ["free", "basic", "pro", "scale"];
 
-// Default the slider to the Pro stop (100k) — our recommended plan.
-const DEFAULT_STOP = VOLUME_STOPS.findIndex((s) => s.plan === "pro");
+// Marketing CTA copy (logged-out visitors); logged-in uses "Choose …".
+const CTA: Record<PlanId, string> = {
+  free: "Start free — no card",
+  basic: "Send from your brand",
+  pro: "Get the full engine",
+  scale: "Scale across your org",
+  enterprise: "Talk to sales",
+};
 
 export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
-  const [stopIdx, setStopIdx] = useState(
-    DEFAULT_STOP >= 0 ? DEFAULT_STOP : 2
-  );
   const [busy, setBusy] = useState<PlanId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const stop = VOLUME_STOPS[stopIdx];
-
-  // Premium scales self-serve with the slider (200k → 2.5M); below premium
-  // volumes it shows its base. 3M+ is Enterprise (its own card / Contact us).
-  const premium = useMemo(() => {
-    if (stop.plan === "premium") {
-      return { emails: stop.emails, price: stop.priceUsd };
-    }
-    return { emails: PLANS.premium.emailQuota, price: PLANS.premium.priceUsd };
-  }, [stop]);
-
   async function selectFree() {
     setError(null);
+    setNotice(null);
     setBusy("free");
     try {
       const res = await fetch("/api/billing/select-free", { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        window.location.assign(data.redirect ?? "/dashboard");
-      } else {
-        setError(data.error ?? "Could not activate the Free plan.");
-      }
+      if (res.ok) window.location.assign(data.redirect ?? "/dashboard");
+      else setError(data.error ?? "Could not activate the Free plan.");
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -63,7 +52,7 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
     }
   }
 
-  async function checkout(plan: PlanId, emails?: number) {
+  async function checkout(plan: PlanId) {
     setError(null);
     setNotice(null);
     setBusy(plan);
@@ -71,16 +60,13 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(emails ? { plan, emails } : { plan }),
+        body: JSON.stringify({ plan }),
       });
       const data = await res.json().catch(() => ({}));
-
-      // New subscription → open Razorpay Checkout.js.
       if (res.ok && data.subscriptionId && data.keyId) {
         await openRazorpayCheckout(data.subscriptionId, data.keyId, plan);
         return;
       }
-      // Already subscribed → change scheduled for the next cycle.
       if (res.ok && data.scheduled) {
         const when = data.startsAt
           ? new Date(data.startsAt).toLocaleDateString()
@@ -90,8 +76,6 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
         );
       } else if (res.ok && data.redirect) {
         window.location.assign(data.redirect);
-      } else if (res.ok && data.url) {
-        window.location.assign(data.url);
       } else {
         setError(data.error ?? "Could not start checkout.");
       }
@@ -115,11 +99,7 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
     });
   }
 
-  async function openRazorpayCheckout(
-    subscriptionId: string,
-    keyId: string,
-    plan: PlanId
-  ) {
+  async function openRazorpayCheckout(subscriptionId: string, keyId: string, plan: PlanId) {
     try {
       await loadRazorpay();
     } catch {
@@ -147,7 +127,7 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
             }),
           });
           const vd = await v.json().catch(() => ({}));
-          if (v.ok) window.location.assign(vd.redirect ?? "/dashboard");
+          if (v.ok) window.location.assign(vd.redirect ?? "/dashboard/guide?welcome=1");
           else setError(vd.error ?? "Payment verification failed.");
         } catch {
           setError("Payment verification failed. Please contact support.");
@@ -159,97 +139,34 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
   }
 
   function mailtoSales(subject: string) {
-    window.location.href = `mailto:${SALES_EMAIL}?subject=${encodeURIComponent(
-      subject
-    )}`;
+    window.location.href = `mailto:${SALES_EMAIL}?subject=${encodeURIComponent(subject)}`;
   }
 
-  /** What the button for a given plan should do + say. */
-  function action(plan: PlanId) {
-    if (currentPlan === plan) {
-      return { label: "Current plan", disabled: true, onClick: () => {} };
-    }
-    if (!loggedIn) {
-      return {
-        label: plan === "free" ? "Start free" : "Get started",
-        onClick: () => window.location.assign("/signup"),
-      };
-    }
-    if (plan === "free") {
-      return { label: "Choose Free", onClick: selectFree };
-    }
-    return {
-      label: `Choose ${PLANS[plan].name}`,
-      onClick: () =>
-        checkout(plan, plan === "premium" ? premium.emails : undefined),
-    };
+  /** What the button for a plan should do + say. */
+  function action(plan: PlanId): { label: string; disabled?: boolean; onClick: () => void } {
+    if (currentPlan === plan) return { label: "Current plan", disabled: true, onClick: () => {} };
+    if (!loggedIn) return { label: CTA[plan], onClick: () => window.location.assign("/signup") };
+    if (plan === "free") return { label: "Choose Free", onClick: selectFree };
+    if (plan === "enterprise")
+      return { label: "Talk to sales", onClick: () => mailtoSales("Enterprise plan enquiry — ConversionCRM") };
+    return { label: `Choose ${PLANS[plan].name}`, onClick: () => checkout(plan) };
   }
 
   return (
     <div>
       {mustChoose && (
         <div className="mb-8 rounded-lg border border-sky-200 bg-sky-50 px-5 py-4 text-center text-sm font-medium text-[#0b3a5e]">
-          Choose a plan to continue to your dashboard. Start on Free (1,000
-          emails / month) — you can upgrade anytime.
+          Choose a plan to continue to your dashboard. Start on Free — real
+          tracking and live behaviour emails, no card.
         </div>
       )}
 
-      {/* ── Volume toggle ──────────────────────────────── */}
-      <div className="mx-auto mb-12 max-w-3xl rounded-xl bg-white p-6 shadow-card">
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium text-gray-500">
-            How many emails do you send per month?
-          </span>
-          <span className={`text-lg font-bold tabular-nums ${NAVY}`}>
-            {formatEmails(stop.emails)}
-            {stop.emails >= 3_000_000 ? "+" : ""}
-          </span>
-        </div>
-
-        <input
-          type="range"
-          min={0}
-          max={VOLUME_STOPS.length - 1}
-          step={1}
-          value={stopIdx}
-          onChange={(e) => setStopIdx(Number(e.target.value))}
-          aria-label="Monthly email volume"
-          className="mt-4 w-full cursor-pointer accent-sky-500"
-        />
-
-        <div className="mt-2 flex justify-between text-[10px] text-gray-400">
-          {VOLUME_STOPS.map((s, i) => (
-            <button
-              key={s.emails}
-              type="button"
-              onClick={() => setStopIdx(i)}
-              className={`tabular-nums transition-colors hover:text-sky-600 ${
-                i === stopIdx ? "font-bold text-sky-600" : ""
-              }`}
-            >
-              {formatEmails(s.emails)}
-              {s.emails >= 3_000_000 ? "+" : ""}
-            </button>
-          ))}
-        </div>
-
-        <p className="mt-4 text-center text-sm text-gray-500">
-          {stop.priceUsd === null ? (
-            <>
-              Above 2.5M emails we tailor a plan to you —{" "}
-              <span className="font-semibold text-[#0b3a5e]">Contact us</span>.
-            </>
-          ) : (
-            <>
-              Recommended:{" "}
-              <span className="font-semibold text-[#0b3a5e]">
-                {PLANS[stop.plan].name}
-              </span>{" "}
-              · {formatPrice(stop.priceUsd)} / mo for{" "}
-              {formatEmails(stop.emails)} emails
-            </>
-          )}
-        </p>
+      {/* Shared-across-all-plans band */}
+      <div className="mx-auto mb-8 max-w-4xl rounded-xl bg-white px-6 py-4 text-center text-sm text-gray-600 shadow-card">
+        <span className="font-semibold text-[#0b3a5e]">Every plan, including Free, includes:</span>{" "}
+        the tracking snippet + REST API · all 8 behaviour-triggered emails ·
+        6-layer scoring · lifecycle stages · guardrails (cooldowns, never email
+        paying users).
       </div>
 
       {error && (
@@ -267,10 +184,7 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         {CARD_PLANS.map((id) => {
           const plan = PLANS[id];
-          const isPremium = id === "premium";
-          const price = isPremium ? premium.price : plan.priceUsd;
-          const quota = isPremium ? premium.emails : plan.emailQuota;
-          const highlight = stop.plan === id;
+          const highlight = !!plan.recommended;
           const a = action(id);
           const isBusy = busy === id;
 
@@ -284,9 +198,9 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
                   : "bg-white shadow-card",
               ].join(" ")}
             >
-              {plan.recommended && (
+              {highlight && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-sky-500 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
-                  Recommended
+                  Most popular
                 </span>
               )}
               <h3 className={`text-sm font-bold uppercase tracking-wide ${NAVY}`}>
@@ -294,16 +208,29 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
               </h3>
               <div className="mt-2 flex items-baseline gap-1">
                 <span className={`text-3xl font-bold tabular-nums ${NAVY}`}>
-                  {formatPrice(price)}
+                  {formatPrice(plan.priceUsd)}
                 </span>
-                {price !== null && price > 0 && (
+                {plan.priceUsd !== null && plan.priceUsd > 0 && (
                   <span className="text-sm text-gray-400">/ mo</span>
                 )}
               </div>
-              <p className="mt-1 text-xs font-medium text-sky-700">
-                {quota.toLocaleString()} emails / month
-              </p>
               <p className="mt-2 text-sm text-gray-500">{plan.blurb}</p>
+
+              {/* Scale mini-row */}
+              <dl className="mt-4 space-y-1 rounded-lg bg-white/70 p-3 text-xs">
+                <div className="flex justify-between">
+                  <dt className="text-gray-400">Tracked users</dt>
+                  <dd className="font-semibold text-[#0b3a5e]">{formatCount(plan.trackedUsers)}/mo</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-400">Emails</dt>
+                  <dd className="font-semibold text-[#0b3a5e]">{formatEmails(plan.emailQuota)}/mo</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-400">Workspaces</dt>
+                  <dd className="font-semibold text-[#0b3a5e]">{plan.workspaces ?? "Unlimited"}</dd>
+                </div>
+              </dl>
 
               <button
                 type="button"
@@ -313,7 +240,7 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
                   "mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold transition-colors",
                   a.disabled
                     ? "cursor-default bg-gray-100 text-gray-400"
-                    : highlight || plan.recommended
+                    : highlight
                     ? "bg-sky-500 text-white hover:bg-sky-600"
                     : "bg-white text-gray-800 shadow-soft hover:text-sky-800",
                 ].join(" ")}
@@ -323,13 +250,7 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
               </button>
 
               <ul className="mt-6 flex-1 space-y-2.5 text-sm text-gray-600">
-                {(isPremium
-                  ? [
-                      `${quota.toLocaleString()} emails / month`,
-                      ...plan.features.slice(1),
-                    ]
-                  : plan.features
-                ).map((f) => (
+                {plan.features.map((f) => (
                   <li key={f} className="flex items-start gap-2.5">
                     <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-sky-500" />
                     {f}
@@ -347,49 +268,29 @@ export function PricingTable({ loggedIn, currentPlan, mustChoose }: Props) {
         })}
       </div>
 
-      {/* ── Enterprise / Custom ────────────────────────── */}
-      <div
-        className={[
-          "mt-6 flex flex-col items-start justify-between gap-4 rounded-xl p-6 sm:flex-row sm:items-center",
-          stop.plan === "enterprise"
-            ? "ring-2 ring-sky-400 bg-sky-50/60"
-            : "bg-[#0b3a5e] text-white",
-        ].join(" ")}
-      >
+      {/* ── Enterprise ─────────────────────────────────── */}
+      <div className="mt-6 flex flex-col items-start justify-between gap-4 rounded-xl bg-[#0b3a5e] p-6 text-white sm:flex-row sm:items-center">
         <div>
-          <h3
-            className={`flex items-center gap-2 text-lg font-bold ${
-              stop.plan === "enterprise" ? NAVY : "text-white"
-            }`}
-          >
+          <h3 className="flex items-center gap-2 text-lg font-bold text-white">
             <Zap className="h-5 w-5" /> Enterprise
           </h3>
-          <p
-            className={`mt-1 text-sm ${
-              stop.plan === "enterprise" ? "text-gray-600" : "text-sky-100"
-            }`}
-          >
-            2.5M+ emails / month, custom volume, pricing & dedicated
-            infrastructure.
+          <p className="mt-1 text-sm text-sky-100">
+            Custom volume, unlimited workspaces &amp; brands, SSO/SAML, SLA,
+            security review, and a dedicated team.
           </p>
         </div>
         <button
           type="button"
           onClick={() => mailtoSales("Enterprise plan enquiry — ConversionCRM")}
-          className={[
-            "shrink-0 rounded-md px-5 py-2.5 text-sm font-semibold transition-colors",
-            stop.plan === "enterprise"
-              ? "bg-sky-500 text-white hover:bg-sky-600"
-              : "bg-white text-[#0b3a5e] hover:bg-sky-50",
-          ].join(" ")}
+          className="shrink-0 rounded-md bg-white px-5 py-2.5 text-sm font-semibold text-[#0b3a5e] transition-colors hover:bg-sky-50"
         >
-          Contact us
+          Talk to sales
         </button>
       </div>
 
       <p className="mt-8 text-center text-xs text-gray-400">
-        Prices in USD. All paid plans include automated lifecycle emails and the
-        composer. Cancel anytime — your data stays put.
+        Prices in USD. Extra emails $0.90 / 1,000. Cancel anytime — your data
+        stays put.
       </p>
     </div>
   );

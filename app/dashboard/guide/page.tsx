@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { getActiveWorkspace } from "@/lib/active-workspace";
+import { CopyButton } from "@/components/CopyButton";
 import {
   Code2,
   Activity,
@@ -9,6 +11,7 @@ import {
   Mail,
   ArrowDown,
   Sparkles,
+  PartyPopper,
 } from "lucide-react";
 
 const NAVY = "text-[#0b3a5e]";
@@ -191,13 +194,89 @@ const EVENTS: { code: string; note: string }[] = [
   { code: 'ConversionCRM.track("paid")', note: "Marks the user Paid forever and stops automated emails." },
 ];
 
-export default async function GuidePage() {
+export default async function GuidePage({
+  searchParams,
+}: {
+  searchParams: { welcome?: string };
+}) {
   const { workspace } = await getActiveWorkspace();
 
   if (!workspace) redirect("/login");
 
+  const welcome = searchParams?.welcome === "1";
+
+  // Build the install snippet for the welcome card (prefer the live domain).
+  const hdrs = headers();
+  const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "";
+  const proto =
+    hdrs.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");
+  const requestUrl = host ? `${proto}://${host}` : "";
+  const configuredUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
+  const appUrl =
+    configuredUrl && !configuredUrl.includes("localhost")
+      ? configuredUrl
+      : requestUrl || "http://localhost:3000";
+  const embedSnippet = `<script src="${appUrl}/widget.js?api_key=${workspace.api_key}"></script>`;
+  const authSnippet = `ConversionCRM.identify(user.id, { email: user.email });
+ConversionCRM.track("sign_up");  // "login" for returning users`;
+
   return (
     <div className="space-y-6 max-w-3xl">
+      {welcome && (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 sm:p-6">
+          <div className="flex items-center gap-2.5">
+            <PartyPopper className="h-5 w-5 text-emerald-600" />
+            <h2 className="text-base font-bold text-emerald-900">
+              You&apos;re in — now put ConversionCRM on your site
+            </h2>
+          </div>
+          <p className="mt-1 text-sm text-emerald-800">
+            Two steps and you&apos;ll see users, scores, and the first behaviour
+            emails fire within minutes.
+          </p>
+
+          <div className="mt-4 space-y-4">
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-gray-900">
+                  1 · Paste this before <code className="rounded bg-white px-1">&lt;/body&gt;</code>
+                </p>
+                <CopyButton text={embedSnippet} label="Copy snippet" />
+              </div>
+              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-md bg-gray-950 p-4 font-mono text-xs leading-relaxed text-green-400">
+                {embedSnippet}
+              </pre>
+            </div>
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-gray-900">
+                  2 · After login / signup, identify the user
+                </p>
+                <CopyButton text={authSnippet} label="Copy code" />
+              </div>
+              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-md bg-gray-950 p-4 font-mono text-xs leading-relaxed text-amber-300">
+                {authSnippet}
+              </pre>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-3 text-sm">
+            <Link
+              href="/dashboard/settings"
+              className="rounded-md bg-emerald-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-emerald-700"
+            >
+              Full install + AI-agent prompt
+            </Link>
+            <Link
+              href="/dashboard"
+              className="rounded-md bg-white px-4 py-2 font-semibold text-emerald-700 shadow-soft transition-colors hover:bg-emerald-50"
+            >
+              Go to dashboard
+            </Link>
+          </div>
+        </section>
+      )}
+
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
           How it all works

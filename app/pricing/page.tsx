@@ -21,11 +21,11 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "Do I need a credit card to start?",
-    a: "No. The Free plan gives you 1,000 emails a month and the full live dashboard. Add a card only when you upgrade to Basic, Pro or Premium.",
+    a: "No. The Free plan gives you 2,000 emails a month, the full live dashboard, the tracking API, and all 8 behaviour-triggered emails. Add a card only when you upgrade to Basic, Pro or Scale.",
   },
   {
-    q: "How does the volume slider work?",
-    a: "Drag it to roughly how many emails you send each month and we'll point you at the right plan. Free covers 1k, Basic 20k, Pro 100k and Premium 200k. Above 200k we quote a price on the slider and our team sets you up.",
+    q: "How are the plans different?",
+    a: "Every plan tracks behaviour, scores intent, and sends the same 8 behaviour-triggered emails. Paid plans add your own sending domain (SMTP), the manual composer, A/B testing, revenue attribution, upgrade-intent alerts, more workspaces, and higher tracked-user and email allowances. You scale on value, not just email volume.",
   },
   {
     q: "Can I cancel or change plans anytime?",
@@ -104,11 +104,12 @@ export default async function PricingPage() {
           Pricing
         </span>
         <h1 className={`text-4xl font-bold tracking-tight sm:text-5xl ${NAVY}`}>
-          Pricing that scales with your sends
+          Signups to paid users, on autopilot
         </h1>
         <p className="mx-auto mt-4 max-w-xl leading-relaxed text-gray-500">
-          Pay for the email volume you actually use. Start free with 1,000
-          emails a month, upgrade when the emails start converting.
+          Track activation, score intent, and send the right email at the right
+          moment. Every plan — including Free — sends real emails and includes
+          the tracking API.
         </p>
       </section>
 

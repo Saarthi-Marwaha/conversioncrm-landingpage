@@ -32,5 +32,5 @@ export async function POST() {
     plan_selected_at: new Date().toISOString(),
   });
 
-  return NextResponse.json({ ok: true, redirect: "/dashboard" });
+  return NextResponse.json({ ok: true, redirect: "/dashboard/guide?welcome=1" });
 }

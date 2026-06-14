@@ -56,7 +56,7 @@ export function PlanUsageBar({
           href="/pricing"
           className="rounded-md bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-600 transition-colors"
         >
-          {plan === "premium" || plan === "enterprise"
+          {plan === "scale" || plan === "enterprise"
             ? "Manage plan"
             : "Upgrade"}
         </Link>

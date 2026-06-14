@@ -23,17 +23,15 @@ export function planAllows(
 export function upgradeMessage(feature: Entitlement): string {
   switch (feature) {
     case "automated_emails":
-      return "Automated lifecycle emails are available on Basic and above.";
+      return "Behaviour-triggered emails are included on every plan.";
     case "custom_composer":
-      return "The custom-HTML email composer is available on Pro and above.";
+      return "The manual email composer is available on Basic and above.";
     case "custom_smtp":
       return "Sending from your own domain (SMTP) is available on Basic and above.";
     case "api_access":
       return "API key access is included on every plan.";
-    case "unlimited_sites":
-      return "Multiple workspaces are available on Premium.";
     case "priority_access":
-      return "Priority access is available on Premium.";
+      return "Priority support is available on Scale and above.";
     default:
       return "Upgrade your plan to unlock this feature.";
   }

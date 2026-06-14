@@ -49,7 +49,7 @@ const NAV_ITEMS: NavItem[] = [
     label: "Email Composer",
     icon: Mail,
     requires: "custom_composer",
-    lockLabel: "Pro",
+    lockLabel: "Basic",
   },
   { href: "/dashboard/guide", label: "Guide", icon: BookOpen },
   { href: "/dashboard/feedback", label: "Feedback", icon: MessageSquarePlus },
@@ -64,7 +64,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: Send,
     external: true,
     requires: "priority_access",
-    lockLabel: "Premium",
+    lockLabel: "Scale",
   },
 ];
 
