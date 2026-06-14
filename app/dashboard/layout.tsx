@@ -3,6 +3,7 @@ import { getActiveWorkspace } from "@/lib/active-workspace";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { TestimonialWidget } from "@/components/TestimonialWidget";
 import { PlanUsageBar } from "@/components/PlanUsageBar";
+import { SetupStatusBanner } from "@/components/SetupStatusBanner";
 import { getQuotaState, reconcileRollover, reconcilePlan } from "@/lib/usage";
 
 export default async function DashboardLayout({
@@ -30,6 +31,7 @@ export default async function DashboardLayout({
       <DashboardSidebar workspace={workspace} userEmail={userEmail} />
       <main className="flex-1 lg:overflow-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+          {!workspace.key_feature_url && <SetupStatusBanner />}
           <PlanUsageBar
             plan={quota.plan}
             used={quota.used}

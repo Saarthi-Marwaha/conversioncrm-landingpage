@@ -245,7 +245,7 @@ user and event should appear within 3 seconds.`;
       </section>
 
       {/* ── Aha moment ─────────────────────────────────── */}
-      <section className="card p-5 sm:p-6 space-y-4">
+      <section id="aha" className="card p-5 sm:p-6 space-y-4 scroll-mt-24">
         <div>
           <h2 className="text-base font-semibold text-gray-900">
             Aha moment (key feature)
